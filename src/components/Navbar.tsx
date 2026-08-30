@@ -8,13 +8,14 @@ import {
   User, 
   ChevronRight,
   Briefcase,
-  Layers
+  Layers,
+  Users
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface NavbarProps {
-  activeTab: 'dashboard' | 'chat' | 'ideas' | 'plan';
-  setActiveTab: (tab: 'dashboard' | 'chat' | 'ideas' | 'plan') => void;
+  activeTab: 'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads';
+  setActiveTab: (tab: 'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads') => void;
   userProfile: UserProfile | null;
   currentProject: string;
   onOpenProfile: () => void;
@@ -110,6 +111,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
+              id="nav-tab-leads"
+              onClick={() => setActiveTab('leads')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
+                activeTab === 'leads'
+                  ? 'bg-blue-500/20 border border-blue-500/40 text-white font-bold shadow-md shadow-blue-500/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Users className={`w-3.5 h-3.5 ${activeTab === 'leads' ? 'text-blue-400' : ''}`} />
+              <span>Najdi zákazníky</span>
+            </button>
+
+            <button
               id="nav-tab-plan"
               onClick={() => setActiveTab('plan')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all ${
@@ -190,6 +204,17 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <Lightbulb className="w-4 h-4" />
           <span>Nápady</span>
+        </button>
+
+        <button
+          id="mobile-nav-leads"
+          onClick={() => setActiveTab('leads')}
+          className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+            activeTab === 'leads' ? 'text-blue-400 font-semibold' : 'text-slate-400'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Zákazníci</span>
         </button>
 
         <button

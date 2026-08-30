@@ -15,7 +15,8 @@ import {
   Award,
   Zap,
   TrendingUp,
-  MapPin
+  MapPin,
+  Users
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { DailyStep, UserProfile } from '../types';
@@ -28,7 +29,7 @@ interface DashboardViewProps {
   onCompleteDailyStep: (stepId: string) => void;
   onRefreshDailyStep: () => void;
   isGeneratingStep: boolean;
-  onNavigateTab: (tab: 'chat' | 'ideas' | 'plan') => void;
+  onNavigateTab: (tab: 'chat' | 'ideas' | 'plan' | 'leads') => void;
   onEditProfile: () => void;
 }
 
@@ -225,7 +226,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <span className="text-xs text-slate-400">Vyber další akci</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           
           {/* Card 1: Zeptat se PodnikAI */}
           <button
@@ -241,7 +242,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Zeptat se PodnikAI
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Přímý AI byznys konzultant. Vyřeš konkrétní problém, otestuj nabídku, připrav prodejní zprávu nebo zeptej se na strategii.
+                Přímý AI byznys konzultant. Vyřeš konkrétní problém, otestuj nabídku nebo prodejní zprávu.
               </p>
             </div>
 
@@ -262,38 +263,63 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <Lightbulb className="w-6 h-6" />
               </div>
               <h3 className="font-heading text-lg font-bold text-slate-100 group-hover:text-indigo-400 transition-colors">
-                Najít podnikatelský nápad
+                Doporučený směr
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Personalizovaný generátor nápadů s kalkulací nákladů, náročnosti, potenciálu příjmu a rychlosti spuštění v ČR.
+                Personalizované směry s kalkulací nákladů, epistemickým oddělením faktů a odhadů a plánem k 1. klientovi.
               </p>
             </div>
 
             <div className="inline-flex items-center gap-2 text-xs font-bold text-indigo-400 group-hover:translate-x-1 transition-transform">
-              <span>Vygenerovat nápady</span>
+              <span>Vybrat směr</span>
               <ArrowRight className="w-4 h-4" />
             </div>
           </button>
 
-          {/* Card 3: Vytvořit podnikatelský plán */}
+          {/* Card 3: Najít zákazníky (New Module) */}
+          <button
+            id="btn-dash-find-customers"
+            onClick={() => onNavigateTab('leads')}
+            className="group p-6 rounded-3xl bg-gradient-to-b from-blue-900/30 to-slate-900/60 border border-blue-500/30 hover:border-blue-500/60 hover:bg-white/10 text-left transition-all duration-200 flex flex-col justify-between space-y-6 shadow-xl backdrop-blur-xl"
+          >
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-blue-500/20 border border-blue-500/30 text-blue-300 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Users className="w-6 h-6" />
+              </div>
+              <h3 className="font-heading text-lg font-bold text-white group-hover:text-blue-300 transition-colors flex items-center gap-2">
+                <span>Najdi zákazníky</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-300 border border-blue-500/40">NOVÉ</span>
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Generátor potenciálních klientů v tvé lokalitě, fit score 0–100 a personalizovaný e-mail, SMS i skript hovoru.
+              </p>
+            </div>
+
+            <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-400 group-hover:translate-x-1 transition-transform">
+              <span>Najít první klienty</span>
+              <ArrowRight className="w-4 h-4" />
+            </div>
+          </button>
+
+          {/* Card 4: Vytvořit podnikatelský plán */}
           <button
             id="btn-dash-create-plan"
             onClick={() => onNavigateTab('plan')}
             className="group p-6 rounded-3xl bg-white/5 border border-white/10 hover:border-white/20 hover:bg-white/10 text-left transition-all duration-200 flex flex-col justify-between space-y-6 shadow-lg backdrop-blur-xl"
           >
             <div className="space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-white/10 text-slate-300 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <FileText className="w-6 h-6" />
               </div>
               <h3 className="font-heading text-lg font-bold text-slate-100 group-hover:text-blue-400 transition-colors">
-                Vytvořit podnikatelský plán
+                Byznys plán
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Kompletní 9-krokový byznys plán: od prvního kroku, přes cenotvorbu, marketing, získávání klientů až po plán na 1. měsíc.
+                9-krokový byznys plán: od prvního kroku, přes cenotvorbu, marketing až po detailní plán na 1. měsíc.
               </p>
             </div>
 
-            <div className="inline-flex items-center gap-2 text-xs font-bold text-blue-400 group-hover:translate-x-1 transition-transform">
+            <div className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 group-hover:translate-x-1 transition-transform">
               <span>Sestavit plán</span>
               <ArrowRight className="w-4 h-4" />
             </div>

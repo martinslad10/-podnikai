@@ -11,8 +11,9 @@ import { DashboardView } from './components/DashboardView';
 import { ChatView } from './components/ChatView';
 import { IdeasView } from './components/IdeasView';
 import { BusinessPlanView } from './components/BusinessPlanView';
+import { CustomersFinderView } from './components/CustomersFinderView';
 import { ProfileDrawer } from './components/ProfileDrawer';
-import { BusinessIdea, BusinessPlan, DailyStep, UserProfile } from './types';
+import { BusinessDirection, BusinessIdea, BusinessPlan, DailyStep, PotentialCustomerLead, UserProfile } from './types';
 import { generateNextDailyStep } from './services/api';
 
 const STORAGE_KEY_PROFILE = 'podnikai_user_profile';
@@ -20,6 +21,7 @@ const STORAGE_KEY_PROJECT = 'podnikai_current_project';
 const STORAGE_KEY_DAILY_STEP = 'podnikai_daily_step';
 const STORAGE_KEY_COMPLETED_STEPS = 'podnikai_completed_steps';
 const STORAGE_KEY_BUSINESS_PLAN = 'podnikai_business_plan';
+const STORAGE_KEY_RECOMMENDED_DIR = 'podnikai_recommended_direction';
 
 export default function App() {
   // App Phase State: 'landing' | 'onboarding' | 'app'
@@ -28,8 +30,21 @@ export default function App() {
     return savedProfile ? 'app' : 'landing';
   });
 
-  // Active Tab in main app: 'dashboard' | 'chat' | 'ideas' | 'plan'
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'ideas' | 'plan'>('dashboard');
+  // Active Tab in main app: 'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads'
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads'>('dashboard');
+
+  // Selected Business Direction for Customer Finding
+  const [selectedDirection, setSelectedDirection] = useState<BusinessDirection | null>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_RECOMMENDED_DIR);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
 
   // User Profile
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
@@ -198,6 +213,52 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
+  const handleSetTodayTaskAsDailyStep = (task: { title: string; description: string; estimatedMinutes: number; whyToday?: string }) => {
+    const newStep: DailyStep = {
+      id: `step-${Date.now()}`,
+      title: task.title,
+      description: task.description,
+      whyImportant: task.whyToday || 'Prioritní krok k získání prvního platícího klienta.',
+      estimatedMinutes: task.estimatedMinutes || 30,
+      completed: false,
+      category: 'prodej'
+    };
+    setDailyStep(newStep);
+    setActiveTab('dashboard');
+  };
+
+  const handleNavigateToFindCustomers = (direction?: BusinessDirection) => {
+    if (direction) {
+      setSelectedDirection(direction);
+      localStorage.setItem(STORAGE_KEY_RECOMMENDED_DIR, JSON.stringify(direction));
+      if (direction.title) {
+        setCurrentProject(direction.title);
+        if (userProfile) {
+          setUserProfile({
+            ...userProfile,
+            currentProject: direction.title
+          });
+        }
+      }
+    }
+    setActiveTab('leads');
+  };
+
+  const handleSetDailyStepFromLead = (lead: PotentialCustomerLead) => {
+    const channel = lead.phone !== 'Nedostupné' ? 'telefonní hovor' : (lead.email !== 'Nedostupné' ? 'e-mail' : 'SMS');
+    const newStep: DailyStep = {
+      id: `step-${Date.now()}`,
+      title: `Oslovit firmu: ${lead.companyName}`,
+      description: `Kontaktuj ${lead.companyName} (${lead.city}) přes ${channel}. Použij připravený skript z modulu Najdi zákazníky.`,
+      whyImportant: `Firma má fit skóre ${lead.fitScore}/100. ${lead.fitReason}`,
+      estimatedMinutes: 15,
+      completed: false,
+      category: 'prodej'
+    };
+    setDailyStep(newStep);
+    setActiveTab('dashboard');
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col relative overflow-hidden font-sans">
       {/* Frosted Glass Ambient Lighting Effects */}
@@ -264,7 +325,19 @@ export default function App() {
                 userProfile={userProfile}
                 onSelectIdeaForPlan={handleSelectIdeaForPlan}
                 onAskAiAboutIdea={handleAskAiAboutIdea}
+                onSetTodayTaskAsDailyStep={handleSetTodayTaskAsDailyStep}
+                onNavigateToFindCustomers={handleNavigateToFindCustomers}
                 currentProject={currentProject}
+              />
+            )}
+
+            {activeTab === 'leads' && (
+              <CustomersFinderView
+                userProfile={userProfile}
+                currentProject={currentProject}
+                recommendedDirection={selectedDirection}
+                onNavigateToIdeas={() => setActiveTab('ideas')}
+                onSetDailyStepFromLead={handleSetDailyStepFromLead}
               />
             )}
 

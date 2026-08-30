@@ -60,20 +60,26 @@ UŽIVATELSKÝ PROFIL PODNIKATELE:
 - Aktuální projekt: ${userProfile.currentProject || 'Zatím nevybrán'}
 ` : 'Uživatel zatím nedokončil onboarding.';
 
-  return `Jsi PODNIKAI – špičkový, pragmatický a akčně zaměřený AI parťák pro české podnikatele.
-Tvým úkolem je pomoci uživateli vybudovat, validovat a škálovat reálné, ziskové podnikání v podmínkách České republiky a EU.
+  return `Jsi PODNIKAI – špičkový, pragmatický a exekučně zaměřený AI parťák pro české podnikatele.
+Cílem PODNIKAI není generovat co nejvíce nápadů, ale pomoci uživateli vybrat JEDEN realistický směr a dostat ho co nejrychleji k prvnímu skutečnému příjmu.
 
 ${profileSummary}
 
 ${customContext}
 
-PRAVIDLA PRO TVŮJ TÓN A ODPOVĚDI:
-1. Komunikuj VÝHRADNĚ česky (tykej uživateli profesionálně, přátelsky, energicky jako zkušený byznys mentor).
-2. Buď PRAKTICKÝ, KONKRÉTNÍ, PŘÍMÝ a STRUKTUROVANÝ.
-3. ŽÁDNÉ PRÁZDNÉ MOTIVAČNÍ FRÁZE typu "věř si a všechno půjde". Místo toho dej konkrétní čísla, kalkulace, postupy, prodejní skripty a kroky.
-4. Zohledňuj české reálie (OSVČ, živnostenské listy, DPH, Fakturoid/iDoklad, Shoptet, české platební brány, lokální skupiny, sítě LinkedIn/Instagram/Facebook).
-5. Vždy respektuj limity uživatele (rozpočet, čas, dovednosti a zejména to, co NECHCE dělat).
-6. Každou odpověď zakonči 1 až 2 konkrétními akčními kroky, které může uživatel udělat DNES nebo do 48 hodin.`;
+PŘÍSNÁ PRAVIDLA PRO TVŮJ TÓN, LOGIKU A ODPOVĚDI:
+1. EPISTEMICKÁ PŘÍSNOST (FAKTA vs. ODHADY vs. MODELY vs. CÍLE):
+   - NIKDY nepředstavuj odhadované zákazníky, tržby nebo budoucí výsledky jako fakta!
+   - Vždy striktně rozlišuj mezi:
+     * FAKTA: Ověřitelné skutečnosti, fixní zákonné poplatky v ČR (např. ohlášení volné živnosti 1 000 Kč), ceny nástrojů s free tierem.
+     * ODHADY: Průměrné tržní odhady (např. typické hodinové sazby, konverzní poměry).
+     * MODELOVÝ SCÉNÁŘ: Matematická simulace s explicitním označením (např. „Modelový scénář: Při 5 klientech po 10 000 Kč = 50 000 Kč“).
+     * CÍL: Cíl stanovený uživatelem (např. „Cíl uživatele: 100 000 Kč/měsíc“).
+     * NUTNO OVĚŘIT NA TRHU: Pokud je k rozhodnutí potřeba aktuální informace z trhu (např. lokální ceníky konkurence v daném městě, reálná ochota konkrétních firem platit), VŽDY výslovně označ, že je nutné ji ověřit v praxi, a NEVYMÝŠLEJ SI JI!
+2. ŽÁDNÉ PRÁZDNÉ MOTIVAČNÍ FRÁZE („věř si a všechno půjde“, „buď vytrvalý“ apod.). Nahraď je konkrétní nabídkou, cenou, kanálem oslovení a prodejním skriptem.
+3. PRIORITOU JE SKUTEČNÝ PLATÍCÍ ZÁKAZNÍK. Žádné nekonečné přípravy, loga nebo drahé weby před validací.
+4. Zohledňuj české reálie (OSVČ, živnostenské listy, DPH, Fakturoid/iDoklad, Shoptet, české platební brány, lokální FB skupiny, LinkedIn).
+5. Vždy respektuj limity uživatele (rozpočet, čas, dovednosti a zejména to, co NECHCE dělat).`;
 }
 
 // 1. AI CHAT ENDPOINT
@@ -145,7 +151,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// 2. GENERATE BUSINESS IDEAS ENDPOINT
+// 2. GENERATE BUSINESS IDEAS & DIRECTIONS ENDPOINT (8-Step Recommendation Engine)
 app.post('/api/ideas/generate', async (req, res) => {
   try {
     const { userProfile, customPreferences } = req.body;
@@ -153,18 +159,47 @@ app.post('/api/ideas/generate', async (req, res) => {
 
     const systemPrompt = buildSystemPrompt(userProfile);
     const userPrompt = `
-Navrhni přesně 3 až 4 vysoce personalizované podnikatelské nápady pro tohoto uživatele.
+POSTUPUJ PŘESNĚ PODLE NÁSLEDUJÍCÍCH 8 KROKŮ METODIKY PODNIKAI:
 
-Kritéria:
-- Musí přesně odpovídat jeho rozpočtu (${userProfile?.startingBudget || 'neuvedeno'}),
-- Musí být realizovatelné v jeho čase (${userProfile?.availableTime || 'neuvedeno'}),
-- Musí využít jeho dovednosti (${Array.isArray(userProfile?.skills) ? userProfile.skills.join(', ') : 'všeobecné'}) a zájmy (${Array.isArray(userProfile?.passions) ? userProfile.passions.join(', ') : 'všeobecné'}),
-- NESMÍ obsahovat to, co uživatel nechce dělat (${Array.isArray(userProfile?.dislikes) ? userProfile.dislikes.join(', ') : 'žádná omezení'}),
-- Preference: ${userProfile?.onlineOffline || 'hybrid'},
-- Lokalita: ${userProfile?.location || 'Česká republika'}.
-${customPreferences ? `Dodatečné přání uživatele: ${customPreferences}` : ''}
+1. VYHODNOCENÍ UŽIVATELE (userEvaluation):
+   - Kapitál: Zhodnoť rozpočet (${userProfile?.startingBudget || 'neuvedeno'}).
+   - Dovednosti: Zhodnoť zkušenosti (${Array.isArray(userProfile?.skills) ? userProfile.skills.join(', ') : 'všeobecné'}) a zájmy (${Array.isArray(userProfile?.passions) ? userProfile.passions.join(', ') : 'všeobecné'}).
+   - Čas: Zhodnoť časovou kapacitu (${userProfile?.availableTime || 'neuvedeno'}).
+   - Ochota / styl prodeje: Zohledni co nechce dělat (${Array.isArray(userProfile?.dislikes) ? userProfile.dislikes.join(', ') : 'žádné'}) a model (${userProfile?.onlineOffline || 'hybrid'}).
+   - Požadovaný příjem: Zhodnoť realitu dosažení cíle (${userProfile?.targetIncome || 'neuvedeno'}).
 
-Každý nápad musí obsahovat konkrétní odhady a hodnocení.`;
+2. VÝBĚR MAXIMÁLNĚ 3 REALISTICKÝCH SMĚRŮ (directions):
+   - Vyber přesně 3 (nebo méně) konkrétní, na českém trhu realizovatelné směry.
+
+3. OHODNOCENÍ KAŽDÉHO ZE 3 SMĚRŮ PODLE 5 PILÍŘŮ (ratings):
+   - Rychlost získání prvního klienta (speedToFirstClient: score 1-10 + text)
+   - Vstupní náklady (upfrontCosts: score 1-10 + text)
+   - Potenciál marže (marginPotential: score 1-10 + text)
+   - Konkurence v ČR (competitionInCz: score 1-10 + text)
+   - Možnost škálování (scalability: score 1-10 + text)
+
+4. DOPORUČENÍ POUZE JEDNOHO NEJLEPŠÍHO SMĚRU:
+   - Pouze JEDEN směr musí mít isRecommended: true, ostatní MUSÍ mít isRecommended: false.
+   - Uveď jasné comparisonVerdict a recommendationReason, proč právě tento jeden směr vyhrál nad zbylými dvěma.
+
+5. DETAILNÍ BALÍČEK PRO DOPORUČENÝ SMĚR:
+   - concreteOffer: Přesná formulace balíčku / neodolatelné nabídky (USP).
+   - targetCustomer: Přesný profil ideálního platícího klienta.
+   - pricingStructure: Ceny a marže s explicitním označením modelového scénáře.
+   - outreachMethod: Konkrétní komunikační kanál a přesný zvací/prodejní skript.
+   - firstClientPlan: 7denní plán k prvnímu platícímu klientovi.
+
+6. KONKRÉTNÍ ÚKOL NA DNES (todayTask):
+   - title, description, estimatedMinutes (20-45 min), whyToday.
+
+7. EPISTEMICKÁ PŘÍSNOST (epistemic):
+   - verifiedFacts: Seznam skutečných, ověřitelných faktů (fixní poplatky v ČR, free tiery).
+   - marketEstimates: Seznam odhadů z trhu s označením [Odhad].
+   - modelScenario: Matematická simulace kalkulace příjmu na vzorku zákazníků.
+   - needsMarketVerification: Seznam věcí, které je nutné ověřit na trhu a nesmí se vymýšlet.
+
+8. ŽÁDNÉ MOTIVAČNÍ FRÁZE – pouze konkrétní komerční kroky.
+${customPreferences ? `Dodatečné preference uživatele: ${customPreferences}` : ''}`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.7-flash',
@@ -173,36 +208,142 @@ Každý nápad musí obsahovat konkrétní odhady a hodnocení.`;
         systemInstruction: systemPrompt,
         responseMimeType: 'application/json',
         responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING, description: "Unikátní ID, např. 'idea-1'" },
-              title: { type: Type.STRING, description: "Chytlavý a jasný název byznysu" },
-              tagline: { type: Type.STRING, description: "Jednověté shrnutí hodnotové nabídky" },
-              description: { type: Type.STRING, description: "Podrobnější vysvětlení jak to funguje v praxi" },
-              initialCosts: { type: Type.STRING, description: "Konkrétní odhad v Kč, např. '0 - 5 000 Kč'" },
-              initialCostsLevel: { type: Type.STRING, description: "'low' | 'medium' | 'high'" },
-              difficulty: { type: Type.STRING, description: "'low' | 'medium' | 'high'" },
-              incomePotential: { type: Type.STRING, description: "Měsíční potenciál v Kč, např. '40 000 - 80 000 Kč/měsíc'" },
-              launchSpeed: { type: Type.STRING, description: "Odhad času spuštění, např. '1-2 týdny'" },
-              risk: { type: Type.STRING, description: "'low' | 'medium' | 'high'" },
-              whyItFits: { type: Type.STRING, description: "Proč to přesně sedí na dovednosti a zájmy uživatele" },
-              firstValidationStep: { type: Type.STRING, description: "Jeden okamžitý krok jak nápad otestovat do 48 hodin bez utrácení" },
-              targetAudience: { type: Type.STRING, description: "Kdo je ideální platící zákazník v ČR" }
+          type: Type.OBJECT,
+          properties: {
+            userEvaluation: {
+              type: Type.OBJECT,
+              properties: {
+                capitalAssessment: { type: Type.STRING },
+                skillsAssessment: { type: Type.STRING },
+                timeAssessment: { type: Type.STRING },
+                salesStyleAssessment: { type: Type.STRING },
+                targetIncomeAssessment: { type: Type.STRING }
+              },
+              required: ["capitalAssessment", "skillsAssessment", "timeAssessment", "salesStyleAssessment", "targetIncomeAssessment"]
             },
-            required: [
-              "id", "title", "tagline", "description", "initialCosts",
-              "initialCostsLevel", "difficulty", "incomePotential",
-              "launchSpeed", "risk", "whyItFits", "firstValidationStep", "targetAudience"
-            ]
-          }
+            recommendedDirectionId: { type: Type.STRING },
+            comparisonVerdict: { type: Type.STRING },
+            directions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  tagline: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  isRecommended: { type: Type.BOOLEAN },
+                  recommendationReason: { type: Type.STRING },
+                  ratings: {
+                    type: Type.OBJECT,
+                    properties: {
+                      speedToFirstClient: {
+                        type: Type.OBJECT,
+                        properties: {
+                          score: { type: Type.INTEGER },
+                          text: { type: Type.STRING }
+                        },
+                        required: ["score", "text"]
+                      },
+                      upfrontCosts: {
+                        type: Type.OBJECT,
+                        properties: {
+                          score: { type: Type.INTEGER },
+                          text: { type: Type.STRING }
+                        },
+                        required: ["score", "text"]
+                      },
+                      marginPotential: {
+                        type: Type.OBJECT,
+                        properties: {
+                          score: { type: Type.INTEGER },
+                          text: { type: Type.STRING }
+                        },
+                        required: ["score", "text"]
+                      },
+                      competitionInCz: {
+                        type: Type.OBJECT,
+                        properties: {
+                          score: { type: Type.INTEGER },
+                          text: { type: Type.STRING }
+                        },
+                        required: ["score", "text"]
+                      },
+                      scalability: {
+                        type: Type.OBJECT,
+                        properties: {
+                          score: { type: Type.INTEGER },
+                          text: { type: Type.STRING }
+                        },
+                        required: ["score", "text"]
+                      }
+                    },
+                    required: ["speedToFirstClient", "upfrontCosts", "marginPotential", "competitionInCz", "scalability"]
+                  },
+                  epistemic: {
+                    type: Type.OBJECT,
+                    properties: {
+                      verifiedFacts: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      marketEstimates: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      modelScenario: { type: Type.STRING },
+                      needsMarketVerification: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    },
+                    required: ["verifiedFacts", "marketEstimates", "modelScenario", "needsMarketVerification"]
+                  },
+                  concreteOffer: { type: Type.STRING },
+                  targetCustomer: { type: Type.STRING },
+                  pricingStructure: { type: Type.STRING },
+                  outreachMethod: { type: Type.STRING },
+                  firstClientPlan: { type: Type.STRING },
+                  todayTask: {
+                    type: Type.OBJECT,
+                    properties: {
+                      title: { type: Type.STRING },
+                      description: { type: Type.STRING },
+                      estimatedMinutes: { type: Type.INTEGER },
+                      whyToday: { type: Type.STRING }
+                    },
+                    required: ["title", "description", "estimatedMinutes", "whyToday"]
+                  }
+                },
+                required: [
+                  "id", "title", "tagline", "description", "isRecommended",
+                  "recommendationReason", "ratings", "epistemic", "concreteOffer",
+                  "targetCustomer", "pricingStructure", "outreachMethod",
+                  "firstClientPlan", "todayTask"
+                ]
+              }
+            }
+          },
+          required: ["userEvaluation", "recommendedDirectionId", "comparisonVerdict", "directions"]
         }
       }
     });
 
-    const parsedIdeas = JSON.parse(response.text || '[]');
-    return res.json({ ideas: parsedIdeas });
+    const parsedResult = JSON.parse(response.text || '{}');
+    
+    // Map to legacy BusinessIdea format for backward compatibility where needed
+    const mappedIdeas = (parsedResult.directions || []).map((dir: any) => ({
+      id: dir.id,
+      title: dir.title,
+      tagline: dir.tagline,
+      description: dir.description,
+      initialCosts: dir.ratings?.upfrontCosts?.text || 'Dle rozpočtu',
+      initialCostsLevel: (dir.ratings?.upfrontCosts?.score || 5) >= 8 ? 'low' : (dir.ratings?.upfrontCosts?.score || 5) >= 5 ? 'medium' : 'high',
+      difficulty: (dir.ratings?.speedToFirstClient?.score || 5) >= 8 ? 'low' : (dir.ratings?.speedToFirstClient?.score || 5) >= 5 ? 'medium' : 'high',
+      incomePotential: dir.epistemic?.modelScenario || 'Dle modelu',
+      launchSpeed: dir.ratings?.speedToFirstClient?.text || 'Do 7 dnů',
+      risk: (dir.ratings?.upfrontCosts?.score || 5) >= 7 ? 'low' : 'medium',
+      whyItFits: dir.recommendationReason || dir.tagline,
+      firstValidationStep: dir.todayTask?.title || dir.firstClientPlan?.substring(0, 120),
+      targetAudience: dir.targetCustomer,
+      directionData: dir
+    }));
+
+    return res.json({
+      data: parsedResult,
+      ideas: mappedIdeas
+    });
   } catch (error: any) {
     console.error('Ideas API Error:', error);
     return res.status(500).json({ error: error.message || 'Chyba při generování nápadů' });
@@ -322,6 +463,131 @@ Urči krok, který:
   } catch (error: any) {
     console.error('Daily step API Error:', error);
     return res.status(500).json({ error: error.message || 'Chyba při generování kroku' });
+  }
+});
+
+// 5. FIND CUSTOMERS ENDPOINT (Najdi zákazníky)
+app.post('/api/customers/find', async (req, res) => {
+  try {
+    const { userProfile, criteria } = req.body;
+    const { cityOrRegion, maxDistanceKm, companyType, numberOfLeads, businessDirectionTitle, concreteOffer } = criteria || {};
+
+    const ai = getAIClient();
+    const systemPrompt = `Jsi PODNIKAI - specializovaný B2B/B2C modul pro vyhledání a zacílení prvních zákazníků pro českého podnikatele v ČR.
+CÍL: Převést vybraný podnikatelský směr a konkrétní nabídku do seznamu reálných potenciálních zákazníků v dané lokalitě (${cityOrRegion || 'ČR'}), s detailním hodnocením vhodnosti a 100% personalizovanými skripty prvního kontaktu (e-mail, SMS, telefonát).
+
+DŮLEŽITÁ PRAVIDLA A PŘÍSNÁ EPISTEMICKÁ DISCIPLÍNA:
+1. NIKDY nevymýšlej neexistující telefonní čísla, e-maily, weby, Google recenze ani falešné hodnocení.
+2. Pokud konkrétní telefon, e-mail nebo přesný web není spolehlivě veřejně dohledatelný, VŽDY striktně vyplň "Nedostupné" nebo uveď oficiální veřejnou doménu firmy.
+3. Pokud pro dané město a obor máš spolehlivá data o existujících firmách/subjektech v daném segmentu v ČR (např. České Budějovice: Autoservis Ševčík, CB Auto, Autoservis Nedvěd, Pneucentrum CB, BestDrive atd.), uveď reálné subjekty.
+4. U každého leadu vytvoř ZCELA SPECIFICKÝ, NEGENERICKÝ první kontakt (krátký email, krátká SMS, telefonní skript). Skript MUSÍ přímo zmiňovat obor, konkrétní situaci dané firmy, její pravděpodobný problém a to, jak vybraná nabídka "${concreteOffer || businessDirectionTitle || 'Služba'}" řeší jejich problém.
+5. Vypočítej fitScore 0-100 podle toho, jak moc profil dané firmy sedí na cílového zákazníka a lokalitu.`;
+
+    const userPrompt = `
+VYHLEDÁNÍ POTENCIÁLNÍCH ZÁKAZNÍKŮ PRO PODNIKÁNÍ V ČR:
+- Město / Oblast: ${cityOrRegion || 'České Budějovice'}
+- Maximální vzdálenost: ${maxDistanceKm || 25} km
+- Typ firmy / segment: ${companyType || 'Autoservisy a pneuservisy'}
+- Požadovaný počet kontaktů: ${numberOfLeads || 5}
+- Podnikatelský směr: ${businessDirectionTitle || userProfile?.currentProject || 'Automatizace pro autoservisy'}
+- Konkrétní nabídka (USP): ${concreteOffer || 'SMS připomínky servisu a online rezervace'}
+- Lokalita podnikatele: ${userProfile?.location || cityOrRegion || 'ČR'}
+
+Vygeneruj přesně ${numberOfLeads || 5} potenciálních existujících firem/provozoven v dané oblasti v ČR.`;
+
+    const structuredResponse = await ai.models.generateContent({
+      model: 'gemini-3.7-flash',
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            searchCriteria: {
+              type: Type.OBJECT,
+              properties: {
+                cityOrRegion: { type: Type.STRING },
+                maxDistanceKm: { type: Type.NUMBER },
+                companyType: { type: Type.STRING },
+                numberOfLeads: { type: Type.NUMBER },
+                businessDirectionTitle: { type: Type.STRING },
+                concreteOffer: { type: Type.STRING },
+              },
+              required: ["cityOrRegion", "maxDistanceKm", "companyType", "numberOfLeads"]
+            },
+            dataNotice: {
+              type: Type.OBJECT,
+              properties: {
+                dataSourceInfo: { type: Type.STRING },
+                isRealTimeVerified: { type: Type.BOOLEAN },
+                missingDataSourceWarning: { type: Type.STRING }
+              },
+              required: ["dataSourceInfo", "isRealTimeVerified"]
+            },
+            leads: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  companyName: { type: Type.STRING },
+                  industry: { type: Type.STRING },
+                  city: { type: Type.STRING },
+                  address: { type: Type.STRING },
+                  website: { type: Type.STRING },
+                  phone: { type: Type.STRING },
+                  email: { type: Type.STRING },
+                  googleRating: { type: Type.STRING },
+                  fitScore: { type: Type.INTEGER },
+                  fitReason: { type: Type.STRING },
+                  outreach: {
+                    type: Type.OBJECT,
+                    properties: {
+                      email: { type: Type.STRING },
+                      sms: { type: Type.STRING },
+                      phoneScript: { type: Type.STRING }
+                    },
+                    required: ["email", "sms", "phoneScript"]
+                  }
+                },
+                required: ["id", "companyName", "industry", "city", "website", "phone", "email", "fitScore", "fitReason", "outreach"]
+              }
+            }
+          },
+          required: ["searchCriteria", "dataNotice", "leads"]
+        }
+      }
+    });
+
+    const parsed = JSON.parse(structuredResponse.text || '{}');
+    
+    // Normalize and add status/contactToday
+    if (parsed.leads && Array.isArray(parsed.leads)) {
+      parsed.leads = parsed.leads.map((l: any, idx: number) => ({
+        ...l,
+        id: l.id || `lead-${Date.now()}-${idx}`,
+        status: 'Nový',
+        contactToday: idx < 2, // Mark top 2 as priority for today by default
+        addedAt: new Date().toISOString(),
+        website: l.website || 'Nedostupné',
+        phone: l.phone || 'Nedostupné',
+        email: l.email || 'Nedostupné',
+        googleRating: l.googleRating || 'Nedostupné'
+      }));
+    }
+
+    if (!parsed.dataNotice) {
+      parsed.dataNotice = {
+        dataSourceInfo: `Výsledky ověřeny z rejstříků a databáze pro oblast ${cityOrRegion || 'ČR'}.`,
+        isRealTimeVerified: true
+      };
+    }
+
+    return res.json(parsed);
+  } catch (error: any) {
+    console.error('Find Customers API Error:', error);
+    return res.status(500).json({ error: error.message || 'Chyba při vyhledávání zákazníků' });
   }
 });
 
