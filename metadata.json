@@ -1,0 +1,6 @@
+{
+  "name": "PODNIKAI",
+  "description": "Tvůj AI parťák pro podnikání – od prvního nápadu až po růst fungujícího byznysu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
