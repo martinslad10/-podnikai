@@ -12,9 +12,15 @@ import { ChatView } from './components/ChatView';
 import { IdeasView } from './components/IdeasView';
 import { BusinessPlanView } from './components/BusinessPlanView';
 import { CustomersFinderView } from './components/CustomersFinderView';
+import { SalesDashboardView } from './components/SalesDashboardView';
+import { FollowUpView } from './components/FollowUpView';
 import { ProfileDrawer } from './components/ProfileDrawer';
-import { BusinessDirection, BusinessIdea, BusinessPlan, DailyStep, PotentialCustomerLead, UserProfile } from './types';
-import { generateNextDailyStep } from './services/api';
+import { BusinessStartAdminView } from './components/admin/BusinessStartAdminView';
+import { BusinessStartClientFlowView } from './components/BusinessStartClientFlowView';
+import { BusinessDirection, BusinessIdea, BusinessPlan, DailyStep, PotentialCustomerLead, UserProfile, LeadStatus, ContactChannel, SalesCostsTracking, AppExecutionMode } from './types';
+import { generateNextDailyStep, fetchSavedLeads, saveLeadsToServer } from './services/api';
+import { createActivityEntry, normalizeLeadStatusSeparation } from './utils/leadActivities';
+import { mergeLeadsWithExisting } from './utils/leadMerge';
 
 const STORAGE_KEY_PROFILE = 'podnikai_user_profile';
 const STORAGE_KEY_PROJECT = 'podnikai_current_project';
@@ -22,16 +28,69 @@ const STORAGE_KEY_DAILY_STEP = 'podnikai_daily_step';
 const STORAGE_KEY_COMPLETED_STEPS = 'podnikai_completed_steps';
 const STORAGE_KEY_BUSINESS_PLAN = 'podnikai_business_plan';
 const STORAGE_KEY_RECOMMENDED_DIR = 'podnikai_recommended_direction';
+const STORAGE_KEY_LEADS = 'podnikai_customer_leads';
+const STORAGE_KEY_APP_MODE = 'podnikai_app_execution_mode';
 
 export default function App() {
+  // Global Application Execution Mode: 'test' (safe simulations) | 'real' (live CRM & real outreach)
+  const [appMode, setAppMode] = useState<AppExecutionMode>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_APP_MODE);
+    return saved === 'real' ? 'real' : 'test';
+  });
+
+  const handleToggleAppMode = (mode?: AppExecutionMode) => {
+    setAppMode(prev => {
+      const next = mode || (prev === 'test' ? 'real' : 'test');
+      localStorage.setItem(STORAGE_KEY_APP_MODE, next);
+      return next;
+    });
+  };
+
   // App Phase State: 'landing' | 'onboarding' | 'app'
   const [appPhase, setAppPhase] = useState<'landing' | 'onboarding' | 'app'>(() => {
+    if (typeof window !== 'undefined') {
+      const h = window.location.hash;
+      if (h === '#admin' || h === '#admin-business-start' || h.startsWith('#business-start')) {
+        return 'app';
+      }
+    }
     const savedProfile = localStorage.getItem(STORAGE_KEY_PROFILE);
     return savedProfile ? 'app' : 'landing';
   });
 
-  // Active Tab in main app: 'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads'
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads'>('dashboard');
+  // Active Tab in main app
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads' | 'sales' | 'followup' | 'admin-business-start' | 'business-start'>(() => {
+    if (typeof window !== 'undefined') {
+      const h = window.location.hash;
+      if (h === '#admin' || h === '#admin-business-start') {
+        return 'admin-business-start';
+      }
+      if (h.startsWith('#business-start')) {
+        return 'business-start';
+      }
+    }
+    return 'dashboard';
+  });
+
+  // Listen to hash changes for direct deep-linking
+  useEffect(() => {
+    const handleHash = () => {
+      const h = window.location.hash;
+      if (h === '#admin' || h === '#admin-business-start') {
+        setAppPhase('app');
+        setActiveTab('admin-business-start');
+      } else if (h.startsWith('#business-start')) {
+        setAppPhase('app');
+        setActiveTab('business-start');
+      }
+    };
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
+
+  // Target Lead for quick navigation from Sales Dashboard to Customers Finder
+  const [targetLeadId, setTargetLeadId] = useState<string | null>(null);
 
   // Selected Business Direction for Customer Finding
   const [selectedDirection, setSelectedDirection] = useState<BusinessDirection | null>(() => {
@@ -103,10 +162,42 @@ export default function App() {
     return null;
   });
 
+  // Leads State with Durable Server Persistence & LocalStorage Fallback
+  const [leads, setLeads] = useState<PotentialCustomerLead[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_LEADS);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.map(normalizeLeadStatusSeparation) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
   const [isGeneratingStep, setIsGeneratingStep] = useState(false);
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
 
-  // Sync state with localStorage
+  // Sync leads from server on initial mount
+  useEffect(() => {
+    fetchSavedLeads().then((serverLeads) => {
+      if (Array.isArray(serverLeads) && serverLeads.length > 0) {
+        setLeads((prev) => {
+          if (prev.length === 0) {
+            const normalized = serverLeads.map(normalizeLeadStatusSeparation);
+            localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify(normalized));
+            return normalized;
+          }
+          const merged = mergeLeadsWithExisting(prev, serverLeads);
+          localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify(merged));
+          return merged;
+        });
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Sync state with localStorage and Server
   useEffect(() => {
     if (userProfile) {
       localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify(userProfile));
@@ -132,6 +223,93 @@ export default function App() {
       localStorage.setItem(STORAGE_KEY_BUSINESS_PLAN, JSON.stringify(businessPlan));
     }
   }, [businessPlan]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify(leads));
+    saveLeadsToServer(leads).catch(() => {});
+  }, [leads]);
+
+  // Lead Activity and Status Update Handlers
+  const handleUpdateLeadStatus = (leadId: string, newStatus: LeadStatus, note?: string) => {
+    const isSim = appMode !== 'real';
+    setLeads(prev => prev.map(l => {
+      if (l.id === leadId) {
+        const channel: ContactChannel = l.lastContactChannel || (l.phone && l.phone !== 'Nedostupné' ? 'phone' : 'other');
+        const currentReal = l.realStatus || l.status;
+        const result = isSim 
+          ? `Změna simulovaného stavu (Test): ${l.simulationStatus || currentReal} → ${newStatus}` 
+          : `Změna reálného stavu CRM: ${currentReal} → ${newStatus}`;
+        const { updatedLead } = createActivityEntry(l, channel, result, newStatus, note, undefined, isSim);
+        return updatedLead;
+      }
+      return l;
+    }));
+  };
+
+  const handleSaveLeadActivity = (
+    leadId: string,
+    channel: ContactChannel,
+    result: string,
+    newStatus: LeadStatus,
+    note?: string,
+    nextContactDate?: string,
+    isSimulation?: boolean
+  ) => {
+    const actualIsSim = typeof isSimulation === 'boolean' ? isSimulation : (appMode !== 'real');
+    setLeads(prev => prev.map(l => {
+      if (l.id === leadId) {
+        const { updatedLead } = createActivityEntry(l, channel, result, newStatus, note, nextContactDate, actualIsSim);
+        return updatedLead;
+      }
+      return l;
+    }));
+
+    // Persist activity to server
+    fetch(`/api/leads/${leadId}/activity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel,
+        result,
+        status: newStatus,
+        note,
+        nextContactDate,
+        isSimulation: actualIsSim
+      })
+    }).catch(err => console.error('Error syncing lead activity to server:', err));
+  };
+
+  const handleUpdateLeadFinancials = (
+    leadId: string,
+    financials: {
+      dealValue?: number;
+      costsTracking?: SalesCostsTracking;
+    }
+  ) => {
+    setLeads(prev => {
+      const updated = prev.map(l => {
+        if (l.id === leadId) {
+          return {
+            ...l,
+            dealValue: financials.dealValue !== undefined ? financials.dealValue : l.dealValue,
+            costsTracking: financials.costsTracking !== undefined ? financials.costsTracking : l.costsTracking
+          };
+        }
+        return l;
+      });
+      // Sync to server
+      fetch(`/api/leads/${leadId}/financials`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(financials)
+      }).catch(err => console.error('Error updating lead financials:', err));
+      return updated;
+    });
+  };
+
+  const handleUpdateLeadDealValue = (leadId: string, dealValue: number | undefined) => {
+    handleUpdateLeadFinancials(leadId, { dealValue });
+  };
 
   // Initial Daily Step Generation if none exists
   useEffect(() => {
@@ -250,7 +428,7 @@ export default function App() {
       id: `step-${Date.now()}`,
       title: `Oslovit firmu: ${lead.companyName}`,
       description: `Kontaktuj ${lead.companyName} (${lead.city}) přes ${channel}. Použij připravený skript z modulu Najdi zákazníky.`,
-      whyImportant: `Firma má fit skóre ${lead.fitScore}/100. ${lead.fitReason}`,
+      whyImportant: `Firma má skóre shody s kritérii ${lead.fitScore}/100. ${lead.fitReason}`,
       estimatedMinutes: 15,
       completed: false,
       category: 'prodej'
@@ -265,29 +443,63 @@ export default function App() {
       <div className="fixed top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-indigo-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
       
-      {/* Navbar (displayed in app phase) */}
-      {appPhase === 'app' && (
+      {/* Navbar (displayed in app phase or when admin/business-start is active) */}
+      {(appPhase === 'app' || activeTab === 'admin-business-start' || activeTab === 'business-start') && (
         <Navbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           userProfile={userProfile}
           currentProject={currentProject}
           onOpenProfile={() => setIsProfileDrawerOpen(true)}
-          onResetToLanding={() => setAppPhase('landing')}
+          onResetToLanding={() => {
+            window.location.hash = '';
+            setAppPhase('landing');
+          }}
+          appMode={appMode}
+          onToggleAppMode={handleToggleAppMode}
         />
       )}
 
       {/* Main Content Area */}
       <main className="flex-1 relative z-10">
+        {/* PODNIKAI Business Start (Internal Admin Tool) */}
+        {activeTab === 'admin-business-start' && (
+          <BusinessStartAdminView />
+        )}
+
+        {/* PODNIKAI Business Start (Automated Public Client Flow) */}
+        {activeTab === 'business-start' && (
+          <BusinessStartClientFlowView
+            onBackToHome={() => {
+              window.location.hash = '';
+              if (userProfile) {
+                setActiveTab('dashboard');
+              } else {
+                setAppPhase('landing');
+              }
+            }}
+          />
+        )}
+
         {/* PHASE 1: Landing Hero */}
-        {appPhase === 'landing' && (
+        {appPhase === 'landing' && activeTab !== 'admin-business-start' && activeTab !== 'business-start' && (
           <LandingHero
             onStart={() => setAppPhase('onboarding')}
+            onOpenAdmin={() => {
+              window.location.hash = '#admin';
+              setAppPhase('app');
+              setActiveTab('admin-business-start');
+            }}
+            onStartBusinessStart={() => {
+              window.location.hash = '#business-start';
+              setAppPhase('app');
+              setActiveTab('business-start');
+            }}
           />
         )}
 
         {/* PHASE 2: Onboarding Flow */}
-        {appPhase === 'onboarding' && (
+        {appPhase === 'onboarding' && activeTab !== 'admin-business-start' && activeTab !== 'business-start' && (
           <OnboardingFlow
             onComplete={handleOnboardingComplete}
             initialProfile={userProfile}
@@ -295,7 +507,7 @@ export default function App() {
         )}
 
         {/* PHASE 3: Main App Tabs */}
-        {appPhase === 'app' && userProfile && (
+        {appPhase === 'app' && userProfile && activeTab !== 'admin-business-start' && activeTab !== 'business-start' && (
           <>
             {activeTab === 'dashboard' && (
               <DashboardView
@@ -308,6 +520,13 @@ export default function App() {
                 isGeneratingStep={isGeneratingStep}
                 onNavigateTab={(tab) => setActiveTab(tab)}
                 onEditProfile={() => setIsProfileDrawerOpen(true)}
+                leads={leads}
+                onUpdateLead={(updated) => {
+                  setLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
+                }}
+                onUpdateLeadStatus={handleUpdateLeadStatus}
+                onSaveLeadActivity={handleSaveLeadActivity}
+                appMode={appMode}
               />
             )}
 
@@ -331,6 +550,21 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'followup' && (
+              <FollowUpView
+                leads={leads}
+                onSelectLead={(leadId) => {
+                  setTargetLeadId(leadId);
+                  setActiveTab('leads');
+                }}
+                onUpdateLeadStatus={handleUpdateLeadStatus}
+                onSaveLeadActivity={handleSaveLeadActivity}
+                onUpdateLeadDealValue={handleUpdateLeadDealValue}
+                onNavigateToFinder={() => setActiveTab('leads')}
+                appMode={appMode}
+              />
+            )}
+
             {activeTab === 'leads' && (
               <CustomersFinderView
                 userProfile={userProfile}
@@ -338,7 +572,27 @@ export default function App() {
                 recommendedDirection={selectedDirection}
                 onNavigateToIdeas={() => setActiveTab('ideas')}
                 onSetDailyStepFromLead={handleSetDailyStepFromLead}
+                leads={leads}
+                onUpdateLeads={(newLeads) => setLeads(newLeads)}
+                initialExpandedLeadId={targetLeadId}
+                onNavigateToSales={() => setActiveTab('sales')}
+                appMode={appMode}
               />
+            )}
+
+            {activeTab === 'sales' && (
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <SalesDashboardView
+                  leads={leads}
+                  onSelectLead={(leadId) => {
+                    setTargetLeadId(leadId);
+                    setActiveTab('leads');
+                  }}
+                  onUpdateLeadDealValue={handleUpdateLeadDealValue}
+                  onUpdateLeadFinancials={handleUpdateLeadFinancials}
+                  onNavigateToFinder={() => setActiveTab('leads')}
+                />
+              </div>
             )}
 
             {activeTab === 'plan' && (
@@ -365,6 +619,14 @@ export default function App() {
         onRestartOnboarding={() => {
           setAppPhase('onboarding');
         }}
+        onUpdateProfile={(updatedProfile) => {
+          setUserProfile(updatedProfile);
+          if (updatedProfile.currentProject) {
+            setCurrentProject(updatedProfile.currentProject);
+          }
+        }}
+        appMode={appMode}
+        onToggleAppMode={handleToggleAppMode}
       />
 
     </div>

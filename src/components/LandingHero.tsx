@@ -15,9 +15,11 @@ import {
 
 interface LandingHeroProps {
   onStart: () => void;
+  onOpenAdmin?: () => void;
+  onStartBusinessStart?: () => void;
 }
 
-export const LandingHero: React.FC<LandingHeroProps> = ({ onStart }) => {
+export const LandingHero: React.FC<LandingHeroProps> = ({ onStart, onOpenAdmin, onStartBusinessStart }) => {
   return (
     <div className="relative min-h-[calc(100vh-4rem)] flex flex-col justify-center items-center overflow-hidden py-12 px-4 sm:px-6 lg:px-8">
       
@@ -47,16 +49,27 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onStart }) => {
           </p>
         </div>
 
-        {/* CTA Button */}
+        {/* CTA Buttons */}
         <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
           <button
             id="btn-landing-start"
             onClick={onStart}
             className="group relative inline-flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-base shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-95 transition-all duration-200"
           >
-            <span>Začít</span>
+            <span>Začít zdarma</span>
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
+
+          {onStartBusinessStart && (
+            <button
+              id="btn-landing-business-start"
+              onClick={onStartBusinessStart}
+              className="group relative inline-flex items-center justify-center gap-2.5 px-6 py-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-white font-bold text-base border border-emerald-500/30 hover:border-emerald-500/50 shadow-xl shadow-emerald-500/10 transition-all duration-200"
+            >
+              <Sparkles className="w-5 h-5 text-emerald-400" />
+              <span>Business Start (1 990 Kč)</span>
+            </button>
+          )}
         </div>
 
         {/* Target Audience Cards */}
@@ -119,6 +132,19 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onStart }) => {
             <span>Okamžitý denní krok k realizaci</span>
           </div>
         </div>
+
+        {onOpenAdmin && (
+          <div className="pt-4 text-center">
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-white/5 border border-transparent hover:border-white/10"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+              <span>PODNIKAI Business Start (Interní klientský portál)</span>
+            </button>
+          </div>
+        )}
 
       </div>
     </div>

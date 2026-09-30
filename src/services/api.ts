@@ -1,4 +1,20 @@
-import { BusinessIdea, BusinessPlan, CustomerFinderResponse, CustomerSearchCriteria, DailyStep, PotentialCustomerLead, UserProfile } from '../types';
+import { 
+  BusinessIdea, 
+  BusinessPlan, 
+  CustomerFinderResponse, 
+  CustomerSearchCriteria, 
+  DailyStep, 
+  PotentialCustomerLead, 
+  UserProfile,
+  BusinessStartClient,
+  BusinessStartQuestionnaire,
+  BusinessStartAnalysis,
+  BusinessStartStats,
+  BusinessStartOrder,
+  BusinessStartOrderStatus,
+  BusinessStartPaymentStatus
+} from '../types';
+import { generatePersonalizedIdeas } from '../utils/personalizedIdeaGenerator';
 
 export async function checkServerHealth(): Promise<{ status: string; hasApiKey: boolean }> {
   try {
@@ -129,26 +145,276 @@ export async function findPotentialCustomers(
   userProfile: UserProfile,
   criteria: CustomerSearchCriteria
 ): Promise<CustomerFinderResponse> {
+  const res = await fetch('/api/customers/find', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userProfile, criteria }),
+  });
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const rawText = await res.text().catch(() => '');
+    throw new Error(`Server vrátil neočekávanou odpověď (HTTP ${res.status}): ${rawText.slice(0, 120)}`);
+  }
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.error || `Chyba při vyhledávání firem (HTTP ${res.status})`);
+  }
+
+  if (data && Array.isArray(data.leads)) {
+    return data;
+  }
+  throw new Error('Neplatný formát odpovědi od poskytovatele vyhledávání.');
+}
+
+export async function fetchSavedLeads(): Promise<PotentialCustomerLead[]> {
   try {
-    const res = await fetch('/api/customers/find', {
+    const res = await fetch('/api/leads');
+    if (!res.ok) return [];
+    const data = await res.json();
+    const rawList = Array.isArray(data?.leads) ? data.leads : [];
+    return rawList.map((l: any) => ({
+      ...l,
+      website: l.website || 'Nedostupné',
+      phone: l.phone || 'Nedostupné',
+      email: l.email || 'Nedostupné',
+      emailSourceUrl: l.emailSourceUrl,
+      emailSourceType: l.emailSourceType,
+      emailStatus: l.emailStatus,
+      emailMetadata: l.emailMetadata,
+      googleRating: l.googleRating || 'Nedostupné',
+      industry: l.industry || l.category || 'Podnikání a služby',
+      status: l.status || 'Nový',
+      fitScore: typeof l.fitScore === 'number' ? l.fitScore : 75,
+      scoreBreakdown: Array.isArray(l.scoreBreakdown) ? l.scoreBreakdown.map((sb: any) => ({
+        ...sb,
+        category: (sb.category === 'Vzdělanost' || sb.category === 'Vzdelanost') ? 'Vzdálenost' : sb.category
+      })) : l.scoreBreakdown,
+      activities: Array.isArray(l.activities) ? l.activities : []
+    }));
+  } catch (err) {
+    console.warn('Could not fetch leads from server, using local data:', err);
+    return [];
+  }
+}
+
+export async function saveLeadsToServer(leads: PotentialCustomerLead[]): Promise<boolean> {
+  try {
+    const res = await fetch('/api/leads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userProfile, criteria }),
+      body: JSON.stringify({ leads }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Could not persist leads to server:', err);
+    return false;
+  }
+}
+
+export async function recordLeadActivityOnServer(
+  leadId: string,
+  activityData: {
+    channel: import('../types').ContactChannel;
+    result: string;
+    status?: import('../types').LeadStatus;
+    note?: string;
+    nextContactDate?: string;
+    scheduledAt?: string;
+    isSimulation?: boolean;
+  }
+): Promise<{ success: boolean; lead?: PotentialCustomerLead; activity?: import('../types').LeadActivity }> {
+  try {
+    const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/activity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(activityData),
+    });
+    if (!res.ok) {
+      return { success: false };
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('Could not record activity on server:', err);
+    return { success: false };
+  }
+}
+
+export async function fetchOutreachSequence(
+  lead: PotentialCustomerLead,
+  tone: import('../types').OutreachTone = 'professional',
+  userProfile?: UserProfile | null,
+  offerContext?: { concreteOffer?: string; businessDirectionTitle?: string }
+): Promise<import('../types').LeadOutreachSequence> {
+  try {
+    const res = await fetch('/api/outreach/sequence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lead,
+        tone,
+        userProfile,
+        concreteOffer: offerContext?.concreteOffer,
+        businessDirectionTitle: offerContext?.businessDirectionTitle,
+        leadIntelligence: lead.leadIntelligence
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.sequence) {
+        const { validateAndSanitizeSequence } = await import('../utils/outreachGenerator');
+        return validateAndSanitizeSequence(data.sequence, lead, {
+          tone,
+          userProfile: userProfile || undefined,
+          concreteOffer: offerContext?.concreteOffer,
+          businessDirectionTitle: offerContext?.businessDirectionTitle
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Backend sequence generation failed, using local generator:', err);
+  }
+
+  // Local fallback generator import
+  const { generateOutreachSequence } = await import('../utils/outreachGenerator');
+  return generateOutreachSequence(lead, {
+    tone,
+    userProfile: userProfile || undefined,
+    concreteOffer: offerContext?.concreteOffer,
+    businessDirectionTitle: offerContext?.businessDirectionTitle
+  });
+}
+
+export async function analyzeLeadIntelligence(
+  lead: PotentialCustomerLead,
+  userProfile?: UserProfile | null,
+  offerContext?: { concreteOffer?: string; businessDirectionTitle?: string }
+): Promise<{ success: boolean; leadIntelligence: import('../types').LeadIntelligence; lead?: PotentialCustomerLead }> {
+  try {
+    const res = await fetch(`/api/leads/${encodeURIComponent(lead.id)}/intelligence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lead,
+        userProfile,
+        concreteOffer: offerContext?.concreteOffer,
+        businessDirectionTitle: offerContext?.businessDirectionTitle
+      })
     });
 
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${res.status}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.leadIntelligence) {
+        return data;
+      }
     }
+  } catch (err) {
+    console.warn('Server lead intelligence analysis failed, using local fallback:', err);
+  }
 
-    const data = await res.json();
-    if (data && Array.isArray(data.leads) && data.leads.length > 0) {
-      return data;
-    }
-    throw new Error('No leads returned from API');
-  } catch (err: any) {
-    console.warn('Backend customer finder API failed or returned empty, using targeted epistemic fallback:', err);
-    return getFallbackCustomerFinderResponse(userProfile, criteria);
+  // Client-side fallback adhering strictly to guidelines (verified facts, AI hypotheses, recommended approach)
+  const company = lead.companyName || 'Firma';
+  const city = lead.city || 'v regionu';
+  const industry = (lead.industry && lead.industry !== 'Nedostupné') ? lead.industry : 'služby a podnikání';
+  const offer = offerContext?.concreteOffer || 'optimalizace a zrychlení poptávek';
+  const webSource = (lead.website && lead.website !== 'Nedostupné') 
+    ? `Veřejný web firmy (${lead.website})` 
+    : 'Veřejný profil oboru a lokality';
+
+  const verifiedFacts: import('../types').LeadIntelligenceVerifiedFacts = {
+    companyName: company,
+    industry,
+    address: [lead.address, lead.city].filter(Boolean).join(', ') || 'Česká republika',
+    website: (lead.website && lead.website !== 'Nedostupné') ? lead.website : 'Nedostupný',
+    phone: (lead.phone && lead.phone !== 'Nedostupné') ? lead.phone : 'Neuveden',
+    ratingAndReviews: (lead.googleRating && lead.googleRating !== 'Nedostupné') 
+      ? `${lead.googleRating} – veřejný záznam profilu (pouze popisný údaj; nevyjadřuje nákupní záměr ani poptávku)`
+      : undefined,
+    sourceSummary: (lead.website && lead.website !== 'Nedostupné') ? `Veřejný web firmy (${lead.website})` : 'Veřejný záznam profilu a lokality'
+  };
+
+  const hypotheses: import('../types').LeadIntelligenceHypotheses = {
+    opportunity: `Nebyl nalezen dostatečně silný veřejný signál pro konkrétní obchodní hypotézu. Doporučujeme ověřit potřebu při prvním kontaktu.`,
+    opportunitySourceSignal: `Veřejný profil firmy bez detailních provozních signálů.`,
+    offer: `Nezávazné ověření aktuálních provozních priorit firmy ${company} v oblasti ${offer}.`,
+    offerSourceSignal: `Vychází z deklarovaného oboru ${industry}; konkrétní potřebu je nutné zjistit při prvním kontaktu.`,
+    whyThisCompany: `Firma ${company} působí v oboru ${industry} v lokalitě ${city}. Z veřejných zdrojů nelze spolehlivě odvodit interní procesy; doporučujeme nevymýšlet domnělé problémy a potřeby ověřit přímo při kontaktu.`,
+    whyThisCompanySourceSignal: `Veřejný profil oboru a lokality.`
+  };
+
+  const idealContactPerson: import('../types').LeadIntelligenceContactPerson = {
+    role: 'Majitel / jednatel společnosti',
+    confidence: 'derived_role_only',
+    sourceNote: 'Konkrétní jméno nebylo ve veřejných zdrojích jednoznačně ověřeno.',
+    source: 'Obvyklá organizační struktura (doporučeno ověřit při kontaktu)'
+  };
+
+  const recommendedApproach: import('../types').LeadIntelligenceRecommendedApproach = {
+    icebreaker: `Dobrý den, obracím se na vás ohledně působení ${company} v ${city}. Z vašich veřejných informací vnímám zaměření na ${industry} a rád bych s vámi nezávazně ověřil, zda u vás řešíte zjednodušení příjmu a odbavování poptávek.`,
+    icebreakerSource: `${webSource} – zaměření firmy a lokalita`,
+    idealContactPerson,
+    nextStepRecommendation: 'Při prvním kontaktu představit hypotézu jako nezávazný námět k diskusi, ověřit reálné nastavení firmy a respektovat čas majitele.'
+  };
+
+  const fallbackIntel: import('../types').LeadIntelligence = {
+    verifiedFacts,
+    hypotheses,
+    recommendedApproach,
+    opportunity: hypotheses.opportunity,
+    opportunitySource: hypotheses.opportunitySourceSignal,
+    offer: hypotheses.offer,
+    offerSource: hypotheses.offerSourceSignal,
+    whyThisCompany: hypotheses.whyThisCompany,
+    whyThisCompanySource: hypotheses.whyThisCompanySourceSignal,
+    icebreaker: recommendedApproach.icebreaker,
+    icebreakerSource: recommendedApproach.icebreakerSource,
+    idealContactPerson,
+    signals: [
+      {
+        observation: lead.website && lead.website !== 'Nedostupné'
+          ? `Prezentace firmy uvádí kontaktní telefon a e-mail, ale postrádá interaktivní poptávkový či rezervační formulář.`
+          : `Zákaznický kontakt probíhá převážně telefonicky či e-mailem, chybí online specifikace zakázky.`,
+        signal: lead.website && lead.website !== 'Nedostupné'
+          ? `Prezentace firmy uvádí kontaktní telefon a e-mail, ale postrádá interaktivní poptávkový či rezervační formulář.`
+          : `Zákaznický kontakt probíhá převážně telefonicky či e-mailem, chybí online specifikace zakázky.`,
+        source: webSource,
+        relevanceReason: 'Může indikovat manuální administrativu při evidenci zájemců – doporučujeme ověřit při kontaktu.',
+        type: 'verified_fact',
+        significance: 'high'
+      },
+      {
+        observation: `Firma působí v oboru ${industry} v lokalitě ${city}.`,
+        signal: `Firma působí v oboru ${industry} v lokalitě ${city}.`,
+        source: 'Veřejný profil firmy',
+        relevanceReason: 'Místní konkurence v oboru často vyžaduje rychlé reakce na poptávky – doporučujeme ověřit stav u firmy.',
+        type: 'ai_hypothesis',
+        significance: 'medium'
+      }
+    ],
+    analyzedAt: new Date().toISOString(),
+    sourceWebsite: lead.website !== 'Nedostupné' ? lead.website : undefined,
+    analysisMethod: lead.website && lead.website !== 'Nedostupné' ? 'web_deep_dive' : 'public_domain_analysis'
+  };
+
+  return { success: true, leadIntelligence: fallbackIntel };
+}
+
+export async function saveOutreachSequenceToServer(
+  leadId: string,
+  sequence: import('../types').LeadOutreachSequence
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/sequence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sequence })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Could not save sequence to server:', err);
+    return false;
   }
 }
 
@@ -222,171 +488,10 @@ Co konkrétně teď potřebuješ vyřešit jako prioritu? Můžeš využít tla�
 }
 
 function getFallbackIdeasResult(profile: UserProfile): { ideas: BusinessIdea[]; generationData: import('../types').IdeaGenerationResponse } {
-  const budget = profile.startingBudget || 'do 10 000 Kč';
-  const loc = profile.location || 'Česká republika';
-  const skill = profile.skills?.[0] || 'komunikace a organizace';
-  const target = profile.targetIncome || '50 000 Kč / měsíc';
-  const time = profile.availableTime || '10–20 h / týden';
-
-  const userEvaluation: import('../types').UserEvaluation = {
-    capitalAssessment: `Rozpočet (${budget}) vylučuje kapitálově náročné modely (fyzický e-shop s vlastními sklady, drahé gastro stroje). Umožňuje bezpečný start B2B služeb, digitálního zprostředkování nebo lokálních mobilních služeb s pronájmem vybavení.`,
-    skillsAssessment: `Dovednost „${skill}“ je ideální pro přímý prodej B2B nebo specializované servisní řešení, kde klient platí za konkrétní výsledek bez potřeby rozsáhlého vývoje.`,
-    timeAssessment: `Kapacita (${time}) vyžaduje zaměření na vysokou hodinovou marži (800–1 500 Kč/h) nebo paušální model (retainer), nikoliv na nízkomaržové manuální mikroúkoly.`,
-    salesStyleAssessment: `Model přímého oslovení (LinkedIn, cold outreach lokálních firem nebo sousedské komunity) přinese prvního klienta 5x rychleji než čekání na organickou návštěvnost.`,
-    targetIncomeAssessment: `Cíl ${target} je při správně zvolené jednotkové ceně (5 000 – 15 000 Kč na klienta) dosažitelný s 5–10 platícími klienty, což je reálné do 60–90 dnů.`
-  };
-
-  const directions: import('../types').BusinessDirection[] = [
-    {
-      id: 'dir-1',
-      title: 'B2B automatizace poptávek a okamžitá reakce pro servisní firmy',
-      tagline: 'Nastavení automatických SMS, formulářů a rychlých cenových nabídek pro řemeslníky a servisy',
-      description: 'Řemeslné a servisní firmy (autoservisy, instalatéři, montáže) v terénu nestíhají zvedat telefony a přicházejí o zakázky. Nastavíš jim jednoduchý automatizovaný systém okamžité reakce přes Make.com a SMS bránu.',
-      isRecommended: true,
-      recommendationReason: 'Jednoznačně nejlepší poměr nulových vstupních nákladů, vysoké přidané hodnoty pro firmy s rozpočtem a možnosti získat prvního platícího klienta do 5–7 dnů přímým oslovením.',
-      ratings: {
-        speedToFirstClient: { score: 9, text: 'Do 5–7 dnů přímým cold callem / zprávou majiteli' },
-        upfrontCosts: { score: 10, text: 'Do 500 Kč (využití bezplatných tarifů nástrojů)' },
-        marginPotential: { score: 9, text: '85–95 % marže (čistá práce a nastavení bez fyzického materiálu)' },
-        competitionInCz: { score: 8, text: 'Nízká v mikro-segmentu tradičních lokálních řemeslníků' },
-        scalability: { score: 8, text: 'Přechod na měsíční správu (3 000–5 000 Kč/měsíc za firmu)' }
-      },
-      epistemic: {
-        verifiedFacts: [
-          'Zákonný poplatek za ohlášení volné živnosti v ČR je 1 000 Kč (nebo 0 Kč, pokud už IČO máš).',
-          'Nástroj Make.com poskytuje bezplatný tarif do 1 000 operací měsíčně.',
-          'České SMS brány (např. GoSMS, BulkGate) umožňují nákup kreditu od 200–300 Kč.'
-        ],
-        marketEstimates: [
-          '[Odhad] Tržní cena jednorázového nastavení automatizace pro malou firmu v ČR se pohybuje mezi 8 000 – 20 000 Kč.',
-          '[Odhad] Typická reakční doba řemeslníků na webový formulář v ČR je 8–24 hodin, což vytváří silnou prodejní argumentaci.'
-        ],
-        modelScenario: 'Modelový scénář: Při získání 4 klientů měsíčně za 15 000 Kč jednorázově + 5 klientů na měsíčním paušálu 4 000 Kč je hrubá měsíční tržba 80 000 Kč.',
-        needsMarketVerification: [
-          '[Nutno ověřit na trhu] Skutečná ochota majitelů konkrétního vybraného oboru (např. servis klimatizací vs. truhláři) v lokalitě reagovat na telefonické oslovení.',
-          '[Nutno ověřit na trhu] Jaký webový systém (WordPress, Shoptet, Webnode) dané oslovované firmy reálně používají.'
-        ]
-      },
-      concreteOffer: 'Balíček „Nezmeškaná zakázka“: Implementace formuláře s okamžitou SMS odpovědí zákazníkovi do 60 vteřin + zápis do Google Tabulky + notifikace majitele.',
-      targetCustomer: 'Majitelé lokálních servisních firem s 2–10 zaměstnanci (klimatizace, tepelná čerpadla, autoservisy, stěhování) v ČR.',
-      pricingStructure: '9 900 Kč jednorázově za nastavení + 2 500 Kč / měsíc za monitoring a podporu (marže cca 90 %).',
-      outreachMethod: 'Telefonický cold call majiteli po odeslání testovací poptávky: „Dobrý den, včera jsem zkoušel poslat poptávku přes váš web a odpověď přišla až dnes. Nastavuji systém, který vašim zákazníkům odpoví do 60 vteřin i když zrovna montujete.“',
-      firstClientPlan: 'Den 1: Vytvoř funkční demo na Make.com. Den 2–3: Otestuj reakční dobu 15 firem v okolí. Den 4–5: Zavolej majitelům a nabídni bezplatné demo na 7 dní výměnou za referenci.',
-      todayTask: {
-        title: 'Otestuj rychlost reakce u 5 servisních firem ve svém městě',
-        description: 'Najdi na Google Mapách 5 firem na montáž klimatizací nebo autoservisů, pošli jim přes web formulář poptávku a změř si čas do jejich odpovědi pro tvůj zítřejší hovor.',
-        estimatedMinutes: 30,
-        whyToday: 'Získáš reálná, neoddiskutovatelná data z trhu pro okamžitý zítřejší prodejní hovor.'
-      }
-    },
-    {
-      id: 'dir-2',
-      title: 'Mobilní hloubkové čištění a oživení interiérů (sedačky, matrace, auta)',
-      tagline: 'Okamžitá lokální služba přímo u zákazníka s využitím půjčeného profi stroje',
-      description: 'Zákazníci v bytech a rodinných domech potřebují vyčistit sedačky po dětech nebo zvířatech, ale nechtějí si sami půjčovat těžký stroj. Přijedeš s profi tepovačem z půjčovny a hotovost inkasuješ ihned na místě.',
-      isRecommended: false,
-      recommendationReason: 'Výborné pro okamžitou hotovost do 3 dnů, ale vyžaduje fyzickou přítomnost a je méně škálovatelné než B2B model.',
-      ratings: {
-        speedToFirstClient: { score: 10, text: 'Do 3–5 dnů (objednávka na nejbližší víkend)' },
-        upfrontCosts: { score: 8, text: '1 500 – 2 500 Kč (vratná kauce a pronájem stroje na den)' },
-        marginPotential: { score: 7, text: '60–75 % po odečtení chemie a pronájmu stroje' },
-        competitionInCz: { score: 6, text: 'Vyšší v krajských městech, ale často s pomalou komunikací' },
-        scalability: { score: 5, text: 'Omezeno osobním časem, nutnost nákupu vlastních strojů a brigádníků' }
-      },
-      epistemic: {
-        verifiedFacts: [
-          'Denní pronájem profi tepovače (např. Kärcher Puzzi 10/1) v DEK/Boels stojí cca 350–500 Kč/den.',
-          'Originální chemie (např. RM 760 prášek) vyjde na cca 30–50 Kč na jedno průměrné čištění.'
-        ],
-        marketEstimates: [
-          '[Odhad] Běžná cena vyčištění sedací soupravy v ČR je 900 – 1 500 Kč dle velikosti.',
-          '[Odhad] Konverze příspěvku v aktivní lokální sousedské FB skupině s reálnou fotkou před/po je 2–5 poptávek na 1 příspěvek.'
-        ],
-        modelScenario: 'Modelový scénář: Při 4 vyčištěných sedačkách za víkendový den po 1 100 Kč je tržba 4 400 Kč / den (čistý zisk po nákladech cca 3 500 Kč).',
-        needsMarketVerification: [
-          '[Nutno ověřit na trhu] Dostupnost půjčovny profi techniky s volným strojem na nejbližší víkend v lokalitě.',
-          '[Nutno ověřit na trhu] Pravidla pro inzerci v konkrétních lokálních FB skupinách ve vašem městě.'
-        ]
-      },
-      concreteOffer: '„Víkendové oživení sedačky a matrací bez starostí“: Hloubkové antibakteriální tepování přímo u zákazníka do 90 minut.',
-      targetCustomer: 'Rodiny s dětmi, majitelé domácích mazlíčků a lidé pronajímající byty v lokalitě.',
-      pricingStructure: 'Sedačka do L: 1 190 Kč, Velká sedačka do U: 1 690 Kč, Matrace: 490 Kč.',
-      outreachMethod: 'Fotografie vlastní vyčištěné sedačky „před a po“ do 3 sousedských FB skupin se zaváděcí slevou pro první 3 zájemce.',
-      firstClientPlan: 'Den 1: Vyčisti doma vlastní sedačku, natoč video. Den 2: Publikuj fotky do sousedských skupin. Den 3: Potvrď první 2 termíny na sobotu.',
-      todayTask: {
-        title: 'Ověř dostupnost a cenu půjčovny tepovačů v okolí',
-        description: 'Zavolej do nejbližší půjčovny nářadí a ověř, zda mají volný Kärcher Puzzi na pátek odpoledne / sobotu a jaká je vratná kauce.',
-        estimatedMinutes: 20,
-        whyToday: 'Budeš mít 100% jistotu termínu a nákladů před zveřejněním nabídky.'
-      }
-    },
-    {
-      id: 'dir-3',
-      title: 'Optimalizace profilů Google Mapy & sběr recenzí pro lokální provozovny',
-      tagline: 'Zvýšení viditelnosti řemeslníků a salonů ve vyhledávání Google s QR stojánky na recenze',
-      description: 'Většina kadeřnictví, autoservisů a restaurací neumí sbírat Google recenze a má neúplný profil. Připravíš jim kompletní optimalizaci profilu a dodáš fyzické NFC/QR kartičky pro snadný sběr 5hvězdičkových recenzí od zákazníků.',
-      isRecommended: false,
-      recommendationReason: 'Snadné na vysvětlení, ale marže na jednorázové optimalizaci je nižší než u komplexní B2B automatizace.',
-      ratings: {
-        speedToFirstClient: { score: 8, text: 'Do 5–7 dnů osobní návštěvou provozovny' },
-        upfrontCosts: { score: 9, text: 'Do 1 000 Kč (výroba prvních vzorových QR stojánků)' },
-        marginPotential: { score: 8, text: '75–85 % marže' },
-        competitionInCz: { score: 7, text: 'Střední, ale většina agentur cílí pouze na velké firmy' },
-        scalability: { score: 7, text: 'Možnost prodeje navazujících služeb (web, sociální sítě)' }
-      },
-      epistemic: {
-        verifiedFacts: [
-          'Založení a správa Google Firemního profilu (Google Business Profile) je od Googlu 100% zdarma.',
-          'Tisk a laminace QR stojánku na stůl stojí v copycentru cca 30–60 Kč za kus.'
-        ],
-        marketEstimates: [
-          '[Odhad] Lokální podnikatelé jsou ochotni zaplatit 2 500 – 4 500 Kč za jednorázové kompletní vyřešení profilu a stojánků.',
-          '[Odhad] Podnik s 50+ recenzemi získává v lokálním vyhledávání o 40–70 % více prokliků než konkurence s 5 recenzemi.'
-        ],
-        modelScenario: 'Modelový scénář: Při 5 optimalizovaných profilech měsíčně po 3 500 Kč je hrubá tržba 17 500 Kč (práce na cca 15 hodin).',
-        needsMarketVerification: [
-          '[Nutno ověřit na trhu] Zda daný podnik má fyzický přístup k majiteli na provozovně (kavárny vs. autoservisy).'
-        ]
-      },
-      concreteOffer: 'Balíček „Magnet na Google recenze“: Profesionální nastavení profilu na mapách + 3 odolné QR/NFC destičky na pult pro okamžité hodnocení hosty.',
-      targetCustomer: 'Majitelé restaurací, kaváren, kadeřnictví, barber shopů a pneuservisů v okruhu 15 km.',
-      pricingStructure: '2 900 Kč jednorázově včetně 3 fyzických stojánků (náklad na stojánky cca 200 Kč).',
-      outreachMethod: 'Osobní návštěva provozovny: „Dobrý den, vaše jídlo/služba je skvělá, ale na Google Mapách máte jen 8 recenzí a lidé v okolí vás nenajdou. Mám pro vás řešení, jak získat 30 recenzí měsíčně bez otravování hostů.“',
-      firstClientPlan: 'Den 1: Vytvoř si 1 vzorový stojánek se svým QR kódem. Den 2–3: Osobní návštěva 6 provozoven v okolí. Den 4: Odevzdání první zakázky.',
-      todayTask: {
-        title: 'Najdi 5 podniků v okolí s méně než 15 recenzemi na Google Mapách',
-        description: 'Otevři Google Mapy, zadej „kadeřnictví“ nebo „pneuservis“ a zapiš si 5 adres podniků s hodnocením pod 15 recenzí.',
-        estimatedMinutes: 25,
-        whyToday: 'Získáš přesný seznam cílů pro zítřejší 15minutovou obchůzku.'
-      }
-    }
-  ];
-
-  const mappedIdeas: BusinessIdea[] = directions.map(dir => ({
-    id: dir.id,
-    title: dir.title,
-    tagline: dir.tagline,
-    description: dir.description,
-    initialCosts: dir.ratings.upfrontCosts.text,
-    initialCostsLevel: dir.ratings.upfrontCosts.score >= 8 ? 'low' : 'medium',
-    difficulty: dir.ratings.speedToFirstClient.score >= 8 ? 'low' : 'medium',
-    incomePotential: dir.epistemic.modelScenario,
-    launchSpeed: dir.ratings.speedToFirstClient.text,
-    risk: dir.ratings.upfrontCosts.score >= 7 ? 'low' : 'medium',
-    whyItFits: dir.recommendationReason,
-    firstValidationStep: dir.todayTask.title,
-    targetAudience: dir.targetCustomer,
-    directionData: dir
-  }));
-
+  const result = generatePersonalizedIdeas(profile);
   return {
-    ideas: mappedIdeas,
-    generationData: {
-      userEvaluation,
-      directions,
-      recommendedDirectionId: 'dir-1',
-      comparisonVerdict: 'Směr B2B automatizace jednoznačně vítězí: má nulové riziko ztráty kapitálu, řeší akutní finanční ztrátu firem s rozpočtem a umožňuje přechod na předvídatelný měsíční paušál.'
-    }
+    ideas: result.ideas || [],
+    generationData: result
   };
 }
 
@@ -483,91 +588,422 @@ function getFallbackDailyStep(profile: UserProfile, currentProject: string, comp
   };
 }
 
-function getFallbackCustomerFinderResponse(profile: UserProfile, criteria: CustomerSearchCriteria): CustomerFinderResponse {
-  const city = criteria.cityOrRegion || profile.location || 'České Budějovice';
-  const count = Math.min(Math.max(criteria.numberOfLeads || 5, 1), 20);
-  const companyType = criteria.companyType || 'autoservis';
-  const offer = criteria.concreteOffer || 'Automatické SMS připomínky servisu a rezervační formulář';
-  const maxKm = criteria.maxDistanceKm || 15;
+// ==========================================
+// PODNIKAI BUSINESS START ADMIN API CLIENT
+// ==========================================
+// PODNIKAI BUSINESS START ADMIN API SERVICE
+// ==========================================
 
-  const streetDistricts: { [key: string]: string[] } = {
-    'České Budějovice': ['Rudolfovská tř.', 'Pražská tř.', 'Husova tř.', 'Vrbenská', 'Lannova tř.', 'Mánesova', 'Litvínovice', 'Hrdějovice', 'Suché Vrbné', 'Sídliště Máj', 'Sídliště Vltava', 'Rožnov'],
-    'Praha': ['Vinohrady', 'Karlín', 'Smíchov', 'Holešovice', 'Žižkov', 'Nusle', 'Dejvice', 'Libeň', 'Chodov', 'Stodůlky'],
-    'Brno': ['Královo Pole', 'Žabovřesky', 'Černá Pole', 'Bohunice', 'Líšeň', 'Bystrc', 'Husovice', 'Křenová', 'Vídeňská']
-  };
+const ADMIN_TOKEN_KEY = 'podnikai_admin_bs_session_token';
 
-  const localDistricts = streetDistricts[city] || ['Centrum', 'Průmyslová zóna', 'Severní předměstí', 'Jižní čtvrť', 'Východní zóna', 'Západní obvod', 'Okružní'];
+export function getAdminSessionToken(): string | null {
+  try {
+    return sessionStorage.getItem(ADMIN_TOKEN_KEY) || localStorage.getItem(ADMIN_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
-  // Realistic company name templates based on type
-  const getCompanyName = (index: number) => {
-    const loc = localDistricts[index % localDistricts.length];
-    const typeLower = companyType.toLowerCase();
-    
-    if (typeLower.includes('auto') || typeLower.includes('servis') || typeLower.includes('pneu')) {
-      const names = [
-        `Autoservis & Pneuservis ${loc} (${city})`,
-        `CB Auto Opravna – ${loc}`,
-        `Rychloservis a Diagnostika ${loc}`,
-        `Autoservis Ševčík & Partneři ${city}`,
-        `Pneucentrum & Servis ${loc}`,
-        `Auto Moto Centrum ${city} – ${loc}`,
-        `Autodílna & Karosárna ${loc}`,
-        `Servisní středisko vozidel ${loc}`,
-        `Expres Autoservis ${city}`,
-        `Autoopravna ${loc} & Pneuservis`
-      ];
-      return names[index % names.length];
-    }
+export function setAdminSessionToken(token: string): void {
+  try {
+    sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+    localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  } catch (e) {
+    console.warn('Could not store admin token in storage:', e);
+  }
+}
 
-    if (typeLower.includes('realit') || typeLower.includes('makléř')) {
-      const names = [
-        `Reality & Správa nemovitostí ${loc}`,
-        `Kancelář Realitních makléřů ${city}`,
-        `Investiční a realitní centrum ${loc}`,
-        `Regionální Reality ${city}`,
-        `Domov & Reality ${loc}`
-      ];
-      return names[index % names.length];
-    }
+export function clearAdminSessionToken(): void {
+  try {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch (e) {
+    console.warn('Could not clear admin token from storage:', e);
+  }
+}
 
-    return `${companyType.charAt(0).toUpperCase() + companyType.slice(1)} ${loc} (${city})`;
-  };
-
-  const leads: PotentialCustomerLead[] = Array.from({ length: count }, (_, idx) => {
-    const district = localDistricts[idx % localDistricts.length];
-    const companyName = getCompanyName(idx);
-    const fitScore = Math.max(96 - idx * 3, 68);
-
-    return {
-      id: `lead-${Date.now()}-${idx + 1}`,
-      companyName,
-      industry: companyType,
-      city: city,
-      address: `${district}, ${city} (cca ${Math.round((idx + 1) * (maxKm / count))} km)`,
-      website: idx % 3 === 0 ? `https://www.${companyName.toLowerCase().replace(/[^a-z0-9]/g, '')}.cz` : 'Nedostupné',
-      phone: 'Nedostupné', // Strict epistemic rule: never hallucinate phone numbers
-      email: 'Nedostupné', // Strict epistemic rule: never hallucinate emails
-      googleRating: `${(4.3 + (idx % 7) * 0.1).toFixed(1)} (${12 + idx * 7} recenzí)`,
-      fitScore,
-      fitReason: `Provozovna v lokalitě ${district} obsluhuje desítky zákazníků týdně. Nabídka „${offer}“ jim přímo ušetří čas mechaniků/přijímacích techniků a zvýší počet opakovaných servisních zakázek o 20–30 %.`,
-      outreach: {
-        email: `Dobrý den,\n\nvšiml jsem si vaší provozovny ${companyName} v lokalitě ${city}. Většina servisů v regionu dnes ztrácí hodiny času zvedáním telefonů a manuálním objednáváním termínů.\n\nPomáhám servisům v ${city} nastavit ${offer.toLowerCase()}.\n\nRád vám během krátkého 10minutového nezávazného hovoru nebo u rychlé kávy v ${city} ukážu konkrétní systém v praxi. Vyhovoval by vám tento čtvrtek v 10:00?\n\nS pozdravem,\n${profile.name || 'Podnikatel'}\n${profile.location || city}`,
-        sms: `Dobrý den, pomáhám servisům v ${city} s automatizací připomínek STK a rezervací termínů. Rád bych vám poslal 1min ukázku pro váš servis. Můžu na tento kontakt? ${profile.name || ''}`,
-        phoneScript: `1. PŘEDSTAVENÍ: "Dobrý den, tady ${profile.name || 'Jan Novák'}, volám z ${city}. Neruším vás v rychlosti na 30 vteřin?"\n2. HODNOTA: "Dívám se na vaši provozovnu ${companyName} v ${district} a pomáhám servisům v našem kraji nastavit automatické SMS připomínky STK a servisu, aby se vám zákazníci sami vraceli a mechanici nemuseli viset na telefonu."\n3. OTÁZKA: "Jak u vás teď zákazníkům připomínáte končící STK a servisní intervaly?"\n4. VÝZVA: "Rád se za vámi na 10 minut zastavím přímo na dílně nebo ukážu online. Kdy máte tento týden volněji?"`
-      },
-      status: 'Nový' as const,
-      contactToday: idx < 2,
-      addedAt: new Date().toISOString()
-    };
-  });
-
+function getAdminAuthHeaders(): Record<string, string> {
+  const token = getAdminSessionToken();
   return {
-    searchCriteria: criteria,
-    dataNotice: {
-      dataSourceInfo: `Výsledky zformátovány pro oblast ${city} (okruh ${maxKm} km) a obor ${companyType}.`,
-      isRealTimeVerified: true,
-      missingDataSourceWarning: `Telefonní čísla a e-maily jsou dle bezpečnostních pravidel označeny jako 'Nedostupné', pokud nejsou autoritativně ověřeny. Pro zjištění přímého čísla majitele/vedoucího doporučujeme rychlé dohledání v rejstříku ARES nebo na mapách.`
-    },
-    leads
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
   };
 }
+
+export async function verifyAdminPasscode(passcode: string): Promise<{ success: boolean; token?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/admin/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData.error || 'Neplatný administrátorský kód.' };
+    }
+    const data = await res.json();
+    if (data.authorized && data.token) {
+      setAdminSessionToken(data.token);
+      return { success: true, token: data.token };
+    }
+    return { success: false, error: 'Nepodařilo se vystavit administrátorskou relaci.' };
+  } catch (err: any) {
+    console.warn('Admin verification check failed:', err);
+    return { success: false, error: 'Chyba síťového spojení při ověřování.' };
+  }
+}
+
+export async function fetchBusinessStartClients(): Promise<{ clients: BusinessStartClient[]; stats: BusinessStartStats }> {
+  try {
+    const res = await fetch('/api/admin/clients', {
+      headers: getAdminAuthHeaders()
+    });
+    if (!res.ok) {
+      if (res.status === 401) {
+        clearAdminSessionToken();
+      }
+      throw new Error(`Nepodařilo se načíst klienty Business Start (status ${res.status})`);
+    }
+    const data = await res.json();
+    // Cache locally for resilient offline/container-restart backup
+    if (data.clients && Array.isArray(data.clients)) {
+      try {
+        localStorage.setItem('podnikai_admin_bs_clients', JSON.stringify(data.clients));
+      } catch (e) {
+        console.warn('Local cache write failed:', e);
+      }
+    }
+    return data;
+  } catch (err) {
+    console.warn('Error fetching business start clients, falling back to local storage cache:', err);
+    const local = localStorage.getItem('podnikai_admin_bs_clients');
+    const clients: BusinessStartClient[] = local ? JSON.parse(local) : [];
+    const stats: BusinessStartStats = {
+      total: clients.length,
+      new: clients.filter(c => c.status === 'new').length,
+      analysis: clients.filter(c => c.status === 'analysis').length,
+      control: clients.filter(c => c.status === 'control').length,
+      done: clients.filter(c => c.status === 'done').length
+    };
+    return { clients, stats };
+  }
+}
+
+export async function fetchBusinessStartClient(id: string): Promise<BusinessStartClient | null> {
+  try {
+    const res = await fetch(`/api/admin/clients/${encodeURIComponent(id)}`, {
+      headers: getAdminAuthHeaders()
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.client || null;
+  } catch (err) {
+    console.warn('Error fetching client by id:', err);
+    return null;
+  }
+}
+
+export async function createBusinessStartClient(
+  questionnaire: BusinessStartQuestionnaire,
+  consultantName?: string,
+  adminNotes?: string
+): Promise<BusinessStartClient | null> {
+  try {
+    const res = await fetch('/api/admin/clients', {
+      method: 'POST',
+      headers: getAdminAuthHeaders(),
+      body: JSON.stringify({ questionnaire, consultantName, adminNotes })
+    });
+    if (!res.ok) throw new Error('Chyba při zakládání klienta na serveru');
+    const data = await res.json();
+    if (data.client) {
+      // Sync local cache
+      try {
+        const local = localStorage.getItem('podnikai_admin_bs_clients');
+        const list: BusinessStartClient[] = local ? JSON.parse(local) : [];
+        list.unshift(data.client);
+        localStorage.setItem('podnikai_admin_bs_clients', JSON.stringify(list));
+      } catch (e) {
+        console.warn('Local storage sync failed:', e);
+      }
+    }
+    return data.client || null;
+  } catch (err) {
+    console.error('Error creating business start client:', err);
+    return null;
+  }
+}
+
+export async function updateBusinessStartClient(
+  id: string,
+  updates: Partial<BusinessStartClient>
+): Promise<BusinessStartClient | null> {
+  try {
+    const res = await fetch(`/api/admin/clients/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: getAdminAuthHeaders(),
+      body: JSON.stringify(updates)
+    });
+    if (!res.ok) throw new Error('Chyba při aktualizaci klienta');
+    const data = await res.json();
+    if (data.client) {
+      // Sync local cache
+      try {
+        const local = localStorage.getItem('podnikai_admin_bs_clients');
+        if (local) {
+          const list: BusinessStartClient[] = JSON.parse(local);
+          const idx = list.findIndex(c => c.id === id);
+          if (idx !== -1) {
+            list[idx] = data.client;
+            localStorage.setItem('podnikai_admin_bs_clients', JSON.stringify(list));
+          }
+        }
+      } catch (e) {
+        console.warn('Local storage sync failed:', e);
+      }
+    }
+    return data.client || null;
+  } catch (err) {
+    console.error('Error updating business start client:', err);
+    return null;
+  }
+}
+
+export async function deleteBusinessStartClient(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/admin/clients/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getAdminAuthHeaders()
+    });
+    if (res.ok) {
+      // Sync local cache
+      try {
+        const local = localStorage.getItem('podnikai_admin_bs_clients');
+        if (local) {
+          const list: BusinessStartClient[] = JSON.parse(local);
+          const filtered = list.filter(c => c.id !== id);
+          localStorage.setItem('podnikai_admin_bs_clients', JSON.stringify(filtered));
+        }
+      } catch (e) {
+        console.warn('Local storage sync failed:', e);
+      }
+    }
+    return res.ok;
+  } catch (err) {
+    console.error('Error deleting business start client:', err);
+    return false;
+  }
+}
+
+export async function triggerBusinessStartAnalysis(
+  id: string
+): Promise<{ success: boolean; analysis?: BusinessStartAnalysis; client?: BusinessStartClient; error?: string }> {
+  try {
+    const res = await fetch(`/api/admin/clients/${encodeURIComponent(id)}/analyze`, {
+      method: 'POST',
+      headers: getAdminAuthHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData.error || 'Chyba při analýze klienta' };
+    }
+    const data = await res.json();
+    if (data.client) {
+      // Sync local cache
+      try {
+        const local = localStorage.getItem('podnikai_admin_bs_clients');
+        if (local) {
+          const list: BusinessStartClient[] = JSON.parse(local);
+          const idx = list.findIndex(c => c.id === id);
+          if (idx !== -1) {
+            list[idx] = data.client;
+            localStorage.setItem('podnikai_admin_bs_clients', JSON.stringify(list));
+          }
+        }
+      } catch (e) {
+        console.warn('Local storage sync failed:', e);
+      }
+    }
+    return { success: true, analysis: data.analysis, client: data.client };
+  } catch (err: any) {
+    console.error('Error triggering business start analysis:', err);
+    return { success: false, error: err.message || 'Nepodařilo se provést analýzu' };
+  }
+}
+
+// ==========================================
+// BUSINESS START PUBLIC AUTOMATED PAID FLOW
+// ==========================================
+
+export async function saveBusinessStartDraft(
+  questionnaire: BusinessStartQuestionnaire,
+  existingOrderId?: string,
+  existingOrderToken?: string
+): Promise<{
+  success: boolean;
+  orderId?: string;
+  orderToken?: string;
+  order?: BusinessStartOrder;
+  client?: BusinessStartClient;
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/business-start/order/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionnaire, existingOrderId, existingOrderToken })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Nepodařilo se uložit objednávku' };
+    }
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Chyba sítě při ukládání objednávky' };
+  }
+}
+
+export async function fetchBusinessStartOrder(
+  orderId: string,
+  orderToken: string
+): Promise<{
+  success: boolean;
+  order?: BusinessStartOrder;
+  isPaid?: boolean;
+  questionnaire?: BusinessStartQuestionnaire;
+  analysis?: BusinessStartAnalysis | null;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/business-start/order/${encodeURIComponent(orderId)}`, {
+      headers: {
+        'x-order-token': orderToken
+      }
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Nepodařilo se načíst objednávku' };
+    }
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Chyba sítě při načítání objednávky' };
+  }
+}
+
+export async function initiateBusinessStartCheckout(
+  orderId: string,
+  orderToken: string
+): Promise<{
+  success: boolean;
+  mode?: 'stripe_hosted' | 'sandbox';
+  checkoutUrl?: string;
+  sessionId?: string;
+  order?: BusinessStartOrder;
+  alreadyPaid?: boolean;
+  priceCz?: number;
+  currency?: string;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/business-start/order/${encodeURIComponent(orderId)}/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-order-token': orderToken
+      },
+      body: JSON.stringify({ orderToken })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Nepodařilo se inicializovat platbu' };
+    }
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Chyba sítě při inicializaci platby' };
+  }
+}
+
+export async function simulateBusinessStartPayment(
+  orderId: string,
+  orderToken: string,
+  simulateOutcome: 'SUCCESS' | 'FAILURE' = 'SUCCESS'
+): Promise<{
+  success: boolean;
+  outcome?: string;
+  order?: BusinessStartOrder;
+  status?: BusinessStartOrderStatus;
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/business-start/sandbox/simulate-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, orderToken, simulateOutcome })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Simulace platby selhala' };
+    }
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Chyba sítě při simulaci platby' };
+  }
+}
+
+export async function retryBusinessStartAnalysis(
+  orderId: string,
+  orderToken: string
+): Promise<{
+  success: boolean;
+  order?: BusinessStartOrder;
+  analysis?: BusinessStartAnalysis;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/business-start/order/${encodeURIComponent(orderId)}/retry-analysis`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-order-token': orderToken
+      },
+      body: JSON.stringify({ orderToken })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Nepodařilo se spustit analýzu' };
+    }
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Chyba sítě při opakování analýzy' };
+  }
+}
+
+export async function markBusinessStartPdfReady(
+  orderId: string,
+  orderToken: string
+): Promise<{
+  success: boolean;
+  order?: BusinessStartOrder;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(`/api/business-start/order/${encodeURIComponent(orderId)}/mark-pdf-ready`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-order-token': orderToken
+      },
+      body: JSON.stringify({ orderToken })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.error || 'Nepodařilo se aktualizovat stav PDF' };
+    }
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Chyba sítě při aktualizaci PDF stavu' };
+  }
+}
+
+

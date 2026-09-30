@@ -42,7 +42,26 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, init
   const [onlineOffline, setOnlineOffline] = useState<OnlineOfflinePreference>(initialProfile?.onlineOffline || 'hybrid');
   const [businessTypeInterest, setBusinessTypeInterest] = useState<string>(initialProfile?.businessTypeInterest || 'Služby s vysokou přidanou hodnotou');
   const [currentProject, setCurrentProject] = useState<string>(initialProfile?.currentProject || '');
-  const [location, setLocation] = useState<string>(initialProfile?.location || 'Česká republika, Praha');
+  const [location, setLocation] = useState<string>(initialProfile?.location || 'Česká republika, České Budějovice');
+
+  // Keep form state in sync with initialProfile if it updates or is reloaded
+  React.useEffect(() => {
+    if (initialProfile) {
+      if (initialProfile.name) setName(initialProfile.name);
+      if (initialProfile.status) setStatus(initialProfile.status);
+      if (initialProfile.goal) setGoal(initialProfile.goal);
+      if (initialProfile.targetIncome) setTargetIncome(initialProfile.targetIncome);
+      if (initialProfile.startingBudget) setStartingBudget(initialProfile.startingBudget);
+      if (initialProfile.availableTime) setAvailableTime(initialProfile.availableTime);
+      if (initialProfile.skills) setSkills(initialProfile.skills);
+      if (initialProfile.passions) setPassions(initialProfile.passions);
+      if (initialProfile.dislikes) setDislikes(initialProfile.dislikes);
+      if (initialProfile.onlineOffline) setOnlineOffline(initialProfile.onlineOffline);
+      if (initialProfile.businessTypeInterest) setBusinessTypeInterest(initialProfile.businessTypeInterest);
+      if (initialProfile.currentProject) setCurrentProject(initialProfile.currentProject);
+      if (initialProfile.location) setLocation(initialProfile.location);
+    }
+  }, [initialProfile]);
 
   // Pre-configured tag options
   const defaultSkillsList = [
@@ -254,7 +273,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, init
                   rows={2}
                   value={goal}
                   onChange={(e) => setGoal(e.target.value)}
-                  placeholder="např. Odejít z korporátu do 6 měsíců, mít svobodu v čase a stabilní příjem 100k měsíčně..."
+                  placeholder="např. Získat časovou a pracovní svobodu, otevřít si provozovnu/studio nebo stabilní přivýdělek..."
                   className="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-white/10 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500/60 transition-colors"
                 />
               </div>
@@ -565,10 +584,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, init
               <div className="relative">
                 <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
+                  id="input-onboarding-location"
                   type="text"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="např. Česko – Praha, Brno, Ostrava..."
+                  placeholder="např. Česká republika, České Budějovice (nebo Brno, Praha...)"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-white/10 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500/60"
                 />
               </div>

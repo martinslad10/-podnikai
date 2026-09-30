@@ -16,10 +16,12 @@ import {
   Zap,
   TrendingUp,
   MapPin,
-  Users
+  Users,
+  BarChart3
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { DailyStep, UserProfile } from '../types';
+import { DailyStep, UserProfile, PotentialCustomerLead, LeadStatus, ContactChannel, AppExecutionMode } from '../types';
+import { DailyOutreachPlan } from './DailyOutreachPlan';
 
 interface DashboardViewProps {
   userProfile: UserProfile;
@@ -29,8 +31,21 @@ interface DashboardViewProps {
   onCompleteDailyStep: (stepId: string) => void;
   onRefreshDailyStep: () => void;
   isGeneratingStep: boolean;
-  onNavigateTab: (tab: 'chat' | 'ideas' | 'plan' | 'leads') => void;
+  onNavigateTab: (tab: 'chat' | 'ideas' | 'plan' | 'leads' | 'sales' | 'followup') => void;
   onEditProfile: () => void;
+  leads?: PotentialCustomerLead[];
+  onUpdateLead?: (updatedLead: PotentialCustomerLead) => void;
+  onUpdateLeadStatus?: (leadId: string, status: LeadStatus, note?: string) => void;
+  onSaveLeadActivity?: (
+    leadId: string, 
+    channel: ContactChannel, 
+    result: string, 
+    newStatus: LeadStatus, 
+    note?: string, 
+    nextContactDate?: string,
+    isSimulation?: boolean
+  ) => void;
+  appMode?: AppExecutionMode;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -42,7 +57,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onRefreshDailyStep,
   isGeneratingStep,
   onNavigateTab,
-  onEditProfile
+  onEditProfile,
+  leads,
+  onUpdateLead,
+  onUpdateLeadStatus,
+  onSaveLeadActivity,
+  appMode = 'test'
 }) => {
   const [completedAnimation, setCompletedAnimation] = useState(false);
 
@@ -217,6 +237,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         )}
       </div>
 
+      {/* 2b. DNEŠNÍ PLÁN OSLOVENÍ (Chytrý denní plán kontaktování a follow-upů) */}
+      <DailyOutreachPlan
+        leads={leads}
+        userProfile={userProfile}
+        concreteOffer={userProfile?.goal || currentProject}
+        businessDirectionTitle={currentProject}
+        onUpdateLead={onUpdateLead}
+        onUpdateLeadStatus={onUpdateLeadStatus}
+        onSaveLeadActivity={onSaveLeadActivity}
+        onNavigateToFinder={(leadId) => onNavigateTab('leads')}
+        onNavigateToFollowUp={() => onNavigateTab('followup')}
+        appMode={appMode}
+      />
+
       {/* 3. HLAVNÍ AKCE (3 Main Core Pillars) */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -226,7 +260,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <span className="text-xs text-slate-400">Vyber další akci</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
           
           {/* Card 1: Zeptat se PodnikAI */}
           <button
@@ -301,7 +335,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </button>
 
-          {/* Card 4: Vytvořit podnikatelský plán */}
+          {/* Card 4: Obchodní Dashboard */}
+          <button
+            id="btn-dash-sales-analytics"
+            onClick={() => onNavigateTab('sales')}
+            className="group p-6 rounded-3xl bg-gradient-to-b from-indigo-950/40 to-slate-900/60 border border-indigo-500/30 hover:border-indigo-500/60 hover:bg-white/10 text-left transition-all duration-200 flex flex-col justify-between space-y-6 shadow-xl backdrop-blur-xl"
+          >
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <BarChart3 className="w-6 h-6" />
+              </div>
+              <h3 className="font-heading text-lg font-bold text-white group-hover:text-indigo-300 transition-colors flex items-center gap-2">
+                <span>Obchodní Dashboard</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 border border-indigo-500/40">ANALYTIKA</span>
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Reálný konverzní trychtýř (Funnel), hodnota otevřené pipeline, odlišení reálného výkonu od simulací a ROI.
+              </p>
+            </div>
+
+            <div className="inline-flex items-center gap-2 text-xs font-bold text-indigo-400 group-hover:translate-x-1 transition-transform">
+              <span>Zobrazit výsledky</span>
+              <ArrowRight className="w-4 h-4" />
+            </div>
+          </button>
+
+          {/* Card 5: Vytvořit podnikatelský plán */}
           <button
             id="btn-dash-create-plan"
             onClick={() => onNavigateTab('plan')}
