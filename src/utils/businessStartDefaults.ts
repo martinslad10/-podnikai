@@ -22,20 +22,20 @@ export function createEmptyQuestionnaire(): BusinessStartQuestionnaire {
     clientName: '',
     clientEmail: '',
     clientPhone: '',
-    location: 'Česká republika',
+    location: '',
     currentCareerSituation: '',
-    mainGoal: 'Vybudovat stabilní podnikání a nahradit příjem ze zaměstnání',
-    targetMonthlyIncome: '50 000 – 80 000 Kč',
-    startingCapital: '0 Kč (pouze vlastní čas a existující nástroje)',
-    weeklyTimeCommitment: '15–20 hodin týdně',
-    operatingModel: 'online',
+    mainGoal: '',
+    targetMonthlyIncome: '',
+    startingCapital: '',
+    weeklyTimeCommitment: '',
+    operatingModel: 'offline',
     preferredWorkType: 'Nevím / ještě nemám vyhraněno',
     customPreferredWorkType: '',
-    coreSkillsAndExpertise: ['Komunikace s lidmi', 'Marketing a sociální sítě', 'Organizace a plánování'],
-    passionsAndInterests: ['Digitální nástroje a AI', 'Vzdělávání a konzultace'],
-    strictDislikesAndRedLines: ['Cold calling (studené volání)', 'Složitá fyzická logistika', 'Nákup zboží na sklad'],
-    existingAssetsAndNetwork: 'Notebook, smartphone, osobní síť kontaktů na LinkedInu a sociálních sítích',
-    personalConstraints: 'Práce při zaměstnání, čas zejména po večerech a o víkendech'
+    coreSkillsAndExpertise: [],
+    passionsAndInterests: [],
+    strictDislikesAndRedLines: [],
+    existingAssetsAndNetwork: '',
+    personalConstraints: ''
   };
 }
 
@@ -1982,13 +1982,14 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
       reviewNotes: `Všech 33 validačních kontrol 100% potvrzeno (včetně rozpočtové, finanční QA a hloubkové validace break-even a kapitálu). Rozpočet ${q.startingCapital} aktivně ovlivnil generování i scoring kandidátů. Žádný odhadovaný příjem není prezentován jako garantovaný.`
     },
     sourceOfTruthAudit: {
-      capitalLimit: q.startingCapital,
-      timeWeeklyLimit: q.weeklyTimeCommitment,
-      operatingModelLimit: q.operatingModel.toUpperCase(),
-      mainGoalLimit: q.mainGoal,
+      capitalLimit: q.startingCapital || 'Neuvedeno',
+      timeWeeklyLimit: q.weeklyTimeCommitment || 'Neuvedeno',
+      operatingModelLimit: (q.operatingModel || 'offline').toUpperCase(),
+      mainGoalLimit: q.mainGoal || 'Neuvedeno',
       preferredWorkTypeLimit: q.preferredWorkType || 'Dle shody',
-      strictRedLines: q.strictDislikesAndRedLines,
-      skillsProvided: q.coreSkillsAndExpertise,
+      strictRedLines: q.strictDislikesAndRedLines || [],
+      skillsProvided: q.coreSkillsAndExpertise || [],
+      passionsProvided: q.passionsAndInterests || [],
       existingAssets: q.existingAssetsAndNetwork || 'Neuvedeno',
       unknownsOrBlockers: []
     },

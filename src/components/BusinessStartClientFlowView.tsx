@@ -56,6 +56,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
   const [formData, setFormData] = useState<BusinessStartQuestionnaire>(createEmptyQuestionnaire());
   const [order, setOrder] = useState<BusinessStartOrder | null>(null);
   const [client, setClient] = useState<BusinessStartClient | null>(null);
+  const [savedSessionNotice, setSavedSessionNotice] = useState<{ orderId: string; orderToken: string } | null>(null);
 
   // Loading & Error States
   const [isLoading, setIsLoading] = useState(false);
@@ -64,9 +65,8 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
   const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
   const [isRetryingAnalysis, setIsRetryingAnalysis] = useState(false);
 
-  // Restore existing session from props or localStorage
+  // Restore existing session ONLY if explicit in URL/props, or keep as an optional prompt
   useEffect(() => {
-    const savedSession = localStorage.getItem('podnikai_client_bs_order');
     let orderIdToLoad = initialOrderId;
     let tokenToLoad = initialOrderToken;
 
@@ -84,20 +84,23 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
       }
     }
 
-    if (!orderIdToLoad && savedSession) {
+    // If explicit URL params or props provided (e.g. after payment redirect), load that order
+    if (orderIdToLoad && tokenToLoad) {
+      loadOrder(orderIdToLoad, tokenToLoad);
+      return;
+    }
+
+    // Otherwise check localStorage only for offering an optional restore, but NEVER auto-prefill new visitor
+    const savedSession = localStorage.getItem('podnikai_client_bs_order');
+    if (savedSession) {
       try {
         const parsed = JSON.parse(savedSession);
         if (parsed.orderId && parsed.orderToken) {
-          orderIdToLoad = parsed.orderId;
-          tokenToLoad = parsed.orderToken;
+          setSavedSessionNotice({ orderId: parsed.orderId, orderToken: parsed.orderToken });
         }
       } catch (e) {
         console.warn('Failed parsing saved session', e);
       }
-    }
-
-    if (orderIdToLoad && tokenToLoad) {
-      loadOrder(orderIdToLoad, tokenToLoad);
     }
   }, [initialOrderId, initialOrderToken]);
 
@@ -159,6 +162,23 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
 
   const handleFieldChange = (field: keyof BusinessStartQuestionnaire, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleStartFresh = () => {
+    localStorage.removeItem('podnikai_client_bs_order');
+    setSavedSessionNotice(null);
+    setOrder(null);
+    setClient(null);
+    setFormData(createEmptyQuestionnaire());
+    setError('');
+    setSuccessNotice('Formulář byl nastaven jako čistý a prázdný.');
+    setTimeout(() => setSuccessNotice(''), 3000);
+  };
+
+  const handleRestoreSession = () => {
+    if (savedSessionNotice) {
+      loadOrder(savedSessionNotice.orderId, savedSessionNotice.orderToken);
+    }
   };
 
   const handleSaveDraft = async () => {
@@ -424,7 +444,12 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
               <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('intake')}
+                  onClick={() => {
+                    if (!order) {
+                      setFormData(createEmptyQuestionnaire());
+                    }
+                    setCurrentStep('intake');
+                  }}
                   className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-xl shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
                 >
                   <span>Vyplnit 12 otázek zdarma (cca 5 min)</span>
@@ -450,6 +475,26 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                     <span>Máte rozpracovanou objednávku ({order.id})</span>
                     <ArrowRight className="w-3.5 h-3.5 text-blue-400" />
                   </button>
+                )}
+
+                {!order && savedSessionNotice && (
+                  <div className="flex flex-col sm:flex-row items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRestoreSession}
+                      className="w-full sm:w-auto px-4 py-3 rounded-xl bg-blue-950/40 hover:bg-blue-900/40 text-blue-300 text-xs font-semibold border border-blue-500/30 transition-all flex items-center justify-center gap-2"
+                    >
+                      <span>Obnovit koncept ({savedSessionNotice.orderId})</span>
+                      <RotateCw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStartFresh}
+                      className="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-4 px-2 py-1"
+                    >
+                      Zahájit nový čistý formulář
+                    </button>
+                  </div>
                 )}
               </div>
               <p className="text-[11px] text-slate-500">
@@ -576,9 +621,19 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 <ChevronLeft className="w-3.5 h-3.5" />
                 <span>Zpět na představení služby</span>
               </button>
-              <span className="text-[11px] text-slate-500">
-                12 cílených otázek • Zcela zdarma
-              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleStartFresh}
+                  className="text-[11px] text-slate-400 hover:text-rose-400 transition-colors"
+                  title="Vymaže případný koncept a nastaví formulář od začátku"
+                >
+                  Vyčistit formulář
+                </button>
+                <span className="text-[11px] text-slate-500">
+                  12 cílených otázek • Zcela zdarma
+                </span>
+              </div>
             </div>
 
             <div className="text-center max-w-2xl mx-auto mb-8">
@@ -604,6 +659,11 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <input
                     type="text"
+                    name="client_name_field"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-lpignore="true"
                     value={formData.clientName}
                     onChange={e => handleFieldChange('clientName', e.target.value)}
                     placeholder="Vaše jméno a příjmení *"
@@ -611,6 +671,11 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   />
                   <input
                     type="email"
+                    name="client_email_field"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-lpignore="true"
                     value={formData.clientEmail}
                     onChange={e => handleFieldChange('clientEmail', e.target.value)}
                     placeholder="E-mail pro doručení reportu *"
@@ -620,6 +685,11 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <input
                     type="text"
+                    name="client_phone_field"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-lpignore="true"
                     value={formData.clientPhone}
                     onChange={e => handleFieldChange('clientPhone', e.target.value)}
                     placeholder="Telefon (volitelné)"
@@ -627,6 +697,11 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   />
                   <input
                     type="text"
+                    name="client_location_field"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-lpignore="true"
                     value={formData.location}
                     onChange={e => handleFieldChange('location', e.target.value)}
                     placeholder="Lokalita (město, okres, např. Brno a okolí)"
@@ -721,11 +796,14 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 </div>
               </div>
 
-              {/* Question 8: Preferred Work Type */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
-                  Preferovaný typ práce (Hard Constraint)
-                </label>
+              {/* Sub-item of Question 7: Preferred Work Type (Hard Constraint) */}
+              <div className="space-y-1.5 p-3.5 rounded-xl bg-black/20 border border-white/5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
+                    7b. Preferovaný typ práce (Hard Constraint k modelu provozu)
+                  </label>
+                  <span className="text-[10px] text-teal-400 font-semibold">Striktně respektováno</span>
+                </div>
                 <input
                   type="text"
                   value={formData.customPreferredWorkType || formData.preferredWorkType}
@@ -735,7 +813,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 />
               </div>
 
-              {/* Question 9 & 10: Skills & Red Lines */}
+              {/* Question 8 & 9: Skills & Passions */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
@@ -750,17 +828,31 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-red-400 block">
-                    10. Odmítnuté činnosti (RED LINES)
+                  <label className="text-xs font-bold uppercase tracking-wider text-rose-300 block">
+                    9. Zájmy, obory a témata, která vás baví (oddělené čárkou)
                   </label>
                   <input
                     type="text"
-                    value={formData.strictDislikesAndRedLines?.join(', ') || ''}
-                    onChange={e => handleFieldChange('strictDislikesAndRedLines', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                    placeholder="Např. Celodenní sezení u PC, cold calling, multilevel"
+                    value={formData.passionsAndInterests?.join(', ') || ''}
+                    onChange={e => handleFieldChange('passionsAndInterests', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                    placeholder="Např. Zdravý životní styl, gastro, káva, udržitelnost, technologie"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-blue-500"
                   />
                 </div>
+              </div>
+
+              {/* Question 10: Strict Dislikes / Red Lines */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-red-400 block">
+                  10. Odmítnuté činnosti (RED LINES – Čemu se striktně vyhýbáte)
+                </label>
+                <input
+                  type="text"
+                  value={formData.strictDislikesAndRedLines?.join(', ') || ''}
+                  onChange={e => handleFieldChange('strictDislikesAndRedLines', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                  placeholder="Např. Celodenní sezení u PC, cold calling, multilevel"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-blue-500"
+                />
               </div>
 
               {/* Question 11 & 12 */}

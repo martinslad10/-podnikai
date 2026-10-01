@@ -789,6 +789,7 @@ export interface BusinessStartSourceOfTruthAudit {
   preferredWorkTypeLimit?: string;
   strictRedLines: string[];
   skillsProvided: string[];
+  passionsProvided?: string[];
   existingAssets: string;
   unknownsOrBlockers: string[];
 }

@@ -63,6 +63,7 @@ export function evaluateClientConstraints(q: BusinessStartQuestionnaire): Client
   const goalLower = (q.mainGoal || '').toLowerCase().trim();
   const careerLower = (q.currentCareerSituation || '').toLowerCase().trim();
   const skillsLower = (q.coreSkillsAndExpertise || []).join(' ').toLowerCase().trim();
+  const passionsLower = (q.passionsAndInterests || []).join(' ').toLowerCase().trim();
   const rawRedLines = q.strictDislikesAndRedLines || [];
   const dislikesLower = rawRedLines.join(' ').toLowerCase().trim();
 
@@ -75,7 +76,7 @@ export function evaluateClientConstraints(q: BusinessStartQuestionnaire): Client
 
   // 2. CLIENT GOAL DOMAIN DETECTION
   let detectedDomain: ClientDomain = 'general';
-  const combinedGoalAndContext = `${goalLower} ${careerLower} ${skillsLower} ${workTypeLower}`;
+  const combinedGoalAndContext = `${goalLower} ${careerLower} ${skillsLower} ${passionsLower} ${workTypeLower}`;
 
   if (
     combinedGoalAndContext.includes('vizážist') ||
