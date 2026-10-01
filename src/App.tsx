@@ -31,7 +31,52 @@ const STORAGE_KEY_RECOMMENDED_DIR = 'podnikai_recommended_direction';
 const STORAGE_KEY_LEADS = 'podnikai_customer_leads';
 const STORAGE_KEY_APP_MODE = 'podnikai_app_execution_mode';
 
+function getAppRoute(): 'business-start' | 'admin' | 'dev-preview' {
+  if (typeof window === 'undefined') return 'business-start';
+  const search = new URLSearchParams(window.location.search);
+  const hash = window.location.hash.toLowerCase();
+  const path = window.location.pathname.toLowerCase();
+
+  // 1. Admin access check (?admin=1, ?admin=true, /admin, #admin, #admin-business-start)
+  if (
+    search.get('admin') === '1' ||
+    search.get('admin') === 'true' ||
+    path === '/admin' ||
+    hash === '#admin' ||
+    hash === '#admin-business-start'
+  ) {
+    return 'admin';
+  }
+
+  // 2. Developer internal preview check (?dev=1, ?preview=full, #dev-preview)
+  if (
+    search.get('dev') === '1' ||
+    search.get('preview') === 'full' ||
+    hash === '#dev-preview'
+  ) {
+    return 'dev-preview';
+  }
+
+  // 3. Default production route: 100% Business Start public customer experience
+  return 'business-start';
+}
+
 export default function App() {
+  // Production Application Route State
+  const [currentRoute, setCurrentRoute] = useState<'business-start' | 'admin' | 'dev-preview'>(getAppRoute);
+
+  useEffect(() => {
+    const handleRouteChange = () => {
+      setCurrentRoute(getAppRoute());
+    };
+    window.addEventListener('hashchange', handleRouteChange);
+    window.addEventListener('popstate', handleRouteChange);
+    return () => {
+      window.removeEventListener('hashchange', handleRouteChange);
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, []);
+
   // Global Application Execution Mode: 'test' (safe simulations) | 'real' (live CRM & real outreach)
   const [appMode, setAppMode] = useState<AppExecutionMode>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_APP_MODE);
@@ -46,48 +91,11 @@ export default function App() {
     });
   };
 
-  // App Phase State: 'landing' | 'onboarding' | 'app'
-  const [appPhase, setAppPhase] = useState<'landing' | 'onboarding' | 'app'>(() => {
-    if (typeof window !== 'undefined') {
-      const h = window.location.hash;
-      if (h === '#admin' || h === '#admin-business-start' || h.startsWith('#business-start')) {
-        return 'app';
-      }
-    }
-    const savedProfile = localStorage.getItem(STORAGE_KEY_PROFILE);
-    return savedProfile ? 'app' : 'landing';
-  });
+  // App Phase State for Developer Sandbox
+  const [appPhase, setAppPhase] = useState<'landing' | 'onboarding' | 'app'>('landing');
 
-  // Active Tab in main app
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads' | 'sales' | 'followup' | 'admin-business-start' | 'business-start'>(() => {
-    if (typeof window !== 'undefined') {
-      const h = window.location.hash;
-      if (h === '#admin' || h === '#admin-business-start') {
-        return 'admin-business-start';
-      }
-      if (h.startsWith('#business-start')) {
-        return 'business-start';
-      }
-    }
-    return 'dashboard';
-  });
-
-  // Listen to hash changes for direct deep-linking
-  useEffect(() => {
-    const handleHash = () => {
-      const h = window.location.hash;
-      if (h === '#admin' || h === '#admin-business-start') {
-        setAppPhase('app');
-        setActiveTab('admin-business-start');
-      } else if (h.startsWith('#business-start')) {
-        setAppPhase('app');
-        setActiveTab('business-start');
-      }
-    };
-    handleHash();
-    window.addEventListener('hashchange', handleHash);
-    return () => window.removeEventListener('hashchange', handleHash);
-  }, []);
+  // Active Tab in main app (for dev preview)
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'ideas' | 'plan' | 'leads' | 'sales' | 'followup' | 'admin-business-start' | 'business-start'>('dashboard');
 
   // Target Lead for quick navigation from Sales Dashboard to Customers Finder
   const [targetLeadId, setTargetLeadId] = useState<string | null>(null);
@@ -437,30 +445,60 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
+  // 1. DEDICATED ADMIN ROUTE (?admin=1, ?admin=true, /admin, #admin, #admin-business-start)
+  if (currentRoute === 'admin') {
+    return (
+      <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col relative overflow-hidden font-sans">
+        <div className="fixed top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
+        <main className="flex-1 relative z-10">
+          <BusinessStartAdminView />
+        </main>
+      </div>
+    );
+  }
+
+  // 2. PRODUCTION PUBLIC ROOT ROUTE ("/") — 100% BUSINESS START CUSTOMER EXPERIENCE ONLY
+  // Public customers see ONLY the finished PODNIKAI Business Start product. Unfinished modules are never exposed.
+  if (currentRoute === 'business-start') {
+    return (
+      <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col relative overflow-hidden font-sans">
+        <div className="fixed top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
+        <div className="fixed bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-indigo-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
+        <main className="flex-1 relative z-10">
+          <BusinessStartClientFlowView />
+        </main>
+      </div>
+    );
+  }
+
+  // 3. DEVELOPER INTERNAL PREVIEW (Accessible only via ?dev=1 or ?preview=full or #dev-preview)
+  // Preserves existing unfinished modules in codebase without exposing them publicly
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col relative overflow-hidden font-sans">
       {/* Frosted Glass Ambient Lighting Effects */}
       <div className="fixed top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
       <div className="fixed bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-indigo-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
       
-      {/* Navbar (displayed in app phase or when admin/business-start is active) */}
-      {(appPhase === 'app' || activeTab === 'admin-business-start' || activeTab === 'business-start') && (
-        <Navbar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          userProfile={userProfile}
-          currentProject={currentProject}
-          onOpenProfile={() => setIsProfileDrawerOpen(true)}
-          onResetToLanding={() => {
-            window.location.hash = '';
-            setAppPhase('landing');
-          }}
-          appMode={appMode}
-          onToggleAppMode={handleToggleAppMode}
-        />
-      )}
+      {/* Dev Mode Banner */}
+      <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-1.5 text-center text-xs text-amber-300">
+        Interní vývojový náhled (Dev Sandbox). Veřejní zákazníci vidí pouze Business Start na kořenové URL.
+      </div>
 
-      {/* Main Content Area */}
+      {/* Navbar (displayed in dev sandbox) */}
+      <Navbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        userProfile={userProfile}
+        currentProject={currentProject}
+        onOpenProfile={() => setIsProfileDrawerOpen(true)}
+        onResetToLanding={() => {
+          setAppPhase('landing');
+        }}
+        appMode={appMode}
+        onToggleAppMode={handleToggleAppMode}
+      />
+
+      {/* Main Content Area for Dev Sandbox */}
       <main className="flex-1 relative z-10">
         {/* PODNIKAI Business Start (Internal Admin Tool) */}
         {activeTab === 'admin-business-start' && (
@@ -469,16 +507,7 @@ export default function App() {
 
         {/* PODNIKAI Business Start (Automated Public Client Flow) */}
         {activeTab === 'business-start' && (
-          <BusinessStartClientFlowView
-            onBackToHome={() => {
-              window.location.hash = '';
-              if (userProfile) {
-                setActiveTab('dashboard');
-              } else {
-                setAppPhase('landing');
-              }
-            }}
-          />
+          <BusinessStartClientFlowView />
         )}
 
         {/* PHASE 1: Landing Hero */}
@@ -486,13 +515,9 @@ export default function App() {
           <LandingHero
             onStart={() => setAppPhase('onboarding')}
             onOpenAdmin={() => {
-              window.location.hash = '#admin';
-              setAppPhase('app');
               setActiveTab('admin-business-start');
             }}
             onStartBusinessStart={() => {
-              window.location.hash = '#business-start';
-              setAppPhase('app');
               setActiveTab('business-start');
             }}
           />

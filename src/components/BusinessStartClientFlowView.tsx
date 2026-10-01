@@ -48,8 +48,8 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
   initialOrderToken
 }) => {
   // Navigation & Step State
-  // 1: intake (12 questions), 2: checkout_summary, 3: payment_processing, 4: analyzing, 5: report_ready
-  const [currentStep, setCurrentStep] = useState<'intake' | 'summary' | 'payment' | 'analyzing' | 'report'>('intake');
+  // 0: intro (free introduction), 1: intake (12 questions), 2: checkout_summary, 3: payment_processing, 4: analyzing, 5: report_ready
+  const [currentStep, setCurrentStep] = useState<'intro' | 'intake' | 'summary' | 'payment' | 'analyzing' | 'report'>('intro');
   const [activeQuestionIndex, setActiveQuestionIndex] = useState<number>(0);
 
   // Form & Order State
@@ -292,12 +292,23 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
       <div className="border-b border-white/10 bg-[#090D1A]/80 backdrop-blur-xl sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {onBackToHome && (
+            {currentStep !== 'intro' && (
               <button
                 type="button"
-                onClick={onBackToHome}
+                onClick={() => {
+                  if (currentStep === 'report') {
+                    if (onBackToHome) onBackToHome();
+                    else setCurrentStep('intro');
+                  } else if (currentStep === 'payment') {
+                    setCurrentStep('summary');
+                  } else if (currentStep === 'summary') {
+                    setCurrentStep('intake');
+                  } else if (currentStep === 'intake') {
+                    setCurrentStep('intro');
+                  }
+                }}
                 className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-                title="Zpět do aplikace"
+                title="Zpět"
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
@@ -312,35 +323,49 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Automatizovaný placený flow • Cena: 1 990 Kč
+                12 otázek zdarma • Komplexní analýza a PDF: 1 990 Kč
               </p>
             </div>
           </div>
 
           {/* Stepper indicator */}
           <div className="hidden sm:flex items-center gap-1.5 text-xs">
-            <span className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-              currentStep === 'intake' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 bg-white/5'
-            }`}>
-              1. Dotazník
-            </span>
+            <button
+              type="button"
+              onClick={() => setCurrentStep('intro')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                currentStep === 'intro' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 bg-white/5 hover:text-white'
+              }`}
+            >
+              1. Úvod
+            </button>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+            <button
+              type="button"
+              onClick={() => setCurrentStep('intake')}
+              className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                currentStep === 'intake' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 bg-white/5 hover:text-white'
+              }`}
+            >
+              2. Dotazník (12 otázek)
+            </button>
             <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
             <span className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
               currentStep === 'summary' || currentStep === 'payment' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 bg-white/5'
             }`}>
-              2. Platba (1 990 Kč)
+              3. Platba (1 990 Kč)
             </span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
             <span className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
               currentStep === 'analyzing' ? 'bg-amber-600 text-white font-bold animate-pulse' : 'text-slate-400 bg-white/5'
             }`}>
-              3. AI Analýza
+              4. AI Analýza
             </span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
             <span className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
               currentStep === 'report' ? 'bg-emerald-600 text-white font-bold shadow-md shadow-emerald-500/20' : 'text-slate-400 bg-white/5'
             }`}>
-              4. Hotový Report
+              5. Hotový Report
             </span>
           </div>
 
@@ -379,9 +404,183 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
           </div>
         )}
 
+        {/* STEP 0: FREE INTRODUCTION (PŘEDSTAVENÍ SLUŽBY ZDARMA) */}
+        {currentStep === 'intro' && (
+          <div className="space-y-10 py-4">
+            {/* Hero Section */}
+            <div className="text-center max-w-3xl mx-auto space-y-4">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Oficiální služba PODNIKAI Business Start • 1 990 Kč vč. DPH</span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-heading font-black tracking-tight text-white leading-tight">
+                Váš ucelený byznys plán a strategie pro <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-300">rozjezd podnikání v ČR</span>
+              </h1>
+              <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
+                Žádné obecné motivační fráze. Vyplňte 12 cílených otázek zdarma. Náš analytický systém striktně zmapuje vaše dovednosti, časovou kapacitu, rozpočet a červené linie a po bezpečné platbě 1 990 Kč vygeneruje ucelený akční plán, finanční rozvahu a profesionální PDF ke stažení.
+              </p>
+
+              {/* Action Buttons */}
+              <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('intake')}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-xl shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
+                >
+                  <span>Vyplnit 12 otázek zdarma (cca 5 min)</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                {order && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (order.status === 'REPORT_READY' || order.status === 'PDF_READY') {
+                        setCurrentStep('report');
+                      } else if (order.status === 'ANALYZING' || order.status === 'PAID') {
+                        setCurrentStep('analyzing');
+                      } else if (order.status === 'READY_FOR_PAYMENT') {
+                        setCurrentStep('summary');
+                      } else {
+                        setCurrentStep('intake');
+                      }
+                    }}
+                    className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold border border-white/10 transition-all flex items-center justify-center gap-2"
+                  >
+                    <span>Máte rozpracovanou objednávku ({order.id})</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-blue-400" />
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Vyplnění 12 otázek je 100% nezávazné. Platba 1 990 Kč probíhá až po dokončení a kontrole rekapitulace.
+              </p>
+            </div>
+
+            {/* Key Value Pillars (4 Cards) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="p-5 rounded-2xl bg-[#090D1A] border border-white/10 space-y-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-white">1. Striktní respektování vašich mantinelů</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Systém pracuje jako nekompromisní Source of Truth audit. Zadaný kapitál, časové limity a červené linie (např. žádné víkendy, žádný studený telefonát) jsou pevnou podmínkou pro veškeré výpočty.
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-[#090D1A] border border-white/10 space-y-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-white">2. Finanční matematika & bod zvratu</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Realistická jednotková ekonomika přizpůsobená českému trhu: kalkulace počátečních investic, měsíčních fixních nákladů, marží a doporučené prodejní cenotvorby v Kč.
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-[#090D1A] border border-white/10 space-y-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-white">3. Kapacitní model na míru</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Žádné odhady od stolu. Spočítáme vám, kolik platících zakázek měsíčně a kolik odpracovaných hodin týdně přesně potřebujete k dosažení vašeho požadovaného čistého příjmu.
+                </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-[#090D1A] border border-white/10 space-y-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 flex items-center justify-center">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-white">4. Akční 30denní plán & PDF ke stažení</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Jasný návod k prvním zákazníkům, ověřovací hypotézy a profesionálně formátovaný PDF dokument, ke kterému se můžete kdykoliv vrátit i po zavření prohlížeče.
+                </p>
+              </div>
+            </div>
+
+            {/* How It Works (4 Process Steps) */}
+            <div className="p-6 rounded-2xl bg-[#090D1A] border border-white/10 space-y-5">
+              <h2 className="text-base font-bold text-white text-center">
+                Jak probíhá vytvoření vašeho Business Startu
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                  <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider block">Krok 1</span>
+                  <h4 className="text-xs font-bold text-white">12 otázek zdarma</h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Zadáte své zkušenosti, kapitál, lokalitu, časové možnosti a cíl.
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                  <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider block">Krok 2</span>
+                  <h4 className="text-xs font-bold text-white">Kontrola a rekapitulace</h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Zkontrolujete své odpovědi a potvrdíte spuštění objednávky (1 990 Kč).
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                  <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider block">Krok 3</span>
+                  <h4 className="text-xs font-bold text-white">Platba přes Stripe</h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Rychlá a zabezpečená platba kartou přes ověřenou platební bránu Stripe Checkout.
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block">Krok 4</span>
+                  <h4 className="text-xs font-bold text-white">Hotový report & PDF</h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Okamžité automatické vygenerování byznys plánu a stažení PDF dokumentu.
+                  </p>
+                </div>
+              </div>
+
+              {/* Bottom CTA */}
+              <div className="pt-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('intake')}
+                  className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20 transition-all inline-flex items-center gap-2"
+                >
+                  <span>Začít vyplňovat 12 otázek zdarma</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Trust Footer */}
+            <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-blue-400" /> Zabezpečená platba Stripe
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-emerald-400" /> Okamžité zpracování po úhradě
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Award className="w-4 h-4 text-purple-400" /> 100% garance zohlednění vašich limitů
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* STEP 1: INTAKE QUESTIONNAIRE (12 QUESTIONS) */}
         {currentStep === 'intake' && (
           <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setCurrentStep('intro')}
+                className="text-xs text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Zpět na představení služby</span>
+              </button>
+              <span className="text-[11px] text-slate-500">
+                12 cílených otázek • Zcela zdarma
+              </span>
+            </div>
+
             <div className="text-center max-w-2xl mx-auto mb-8">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold mb-3">
                 <Sparkles className="w-3.5 h-3.5" />
