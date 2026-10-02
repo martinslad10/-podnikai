@@ -146,8 +146,8 @@ POČÁTEČNÍ INVESTICE: ${a.profileEvaluation.capitalFeasibilityNote}
 ==================================================
 - Současná situace: ${q.currentCareerSituation || 'Neuvedeno'}
 - Hlavní cíl: ${q.mainGoal}
-- Klíčové dovednosti: ${q.coreSkillsAndExpertise?.join(', ') || 'Neuvedeno'}
-- Zájmy: ${q.passionsAndInterests?.join(', ') || 'Neuvedeno'}
+- Klíčové dovednosti: ${Array.isArray(q.coreSkillsAndExpertise) ? q.coreSkillsAndExpertise.join(', ') : (q.coreSkillsAndExpertise || 'Neuvedeno')}
+- Zájmy: ${Array.isArray(q.passionsAndInterests) ? q.passionsAndInterests.join(', ') : (q.passionsAndInterests || 'Neuvedeno')}
 - Existující aktiva: ${q.existingAssetsAndNetwork || 'Neuvedeno'}
 
 ==================================================
@@ -156,7 +156,7 @@ POČÁTEČNÍ INVESTICE: ${a.profileEvaluation.capitalFeasibilityNote}
 - Kapitálový limit: ${q.startingCapital} (PŘÍSNÝ STROP)
 - Týdenní časový fond: ${q.weeklyTimeCommitment} (MAXIMÁLNÍ KAPACITA)
 - Provozní model: ${q.operatingModel.toUpperCase()}
-- ČERVENÉ LINIE (ZÁKAZY): ${q.strictDislikesAndRedLines?.join(', ') || 'Žádné'}
+- ČERVENÉ LINIE (ZÁKAZY): ${Array.isArray(q.strictDislikesAndRedLines) ? q.strictDislikesAndRedLines.join(', ') : (q.strictDislikesAndRedLines || 'Žádné')}
 
 ==================================================
 4. NAVRŽENÉ PODNIKATELSKÉ SMĚRY (3–5 SMĚRŮ)
@@ -519,7 +519,12 @@ ${client.adminNotes ? `DOPORUČENÍ KONZULTANTA PODNIKAI:\n${client.adminNotes}`
             <div className="bg-white/[0.02] print:bg-gray-50 border border-white/10 print:border-gray-200 rounded-xl p-3.5 space-y-1.5">
               <span className="text-[10px] font-bold text-slate-400 print:text-gray-600 uppercase block">Silné dovednosti & expertíza:</span>
               <div className="flex flex-wrap gap-1">
-                {q.coreSkillsAndExpertise?.map((skill, i) => (
+                {(Array.isArray(q.coreSkillsAndExpertise)
+                  ? q.coreSkillsAndExpertise
+                  : (typeof q.coreSkillsAndExpertise === 'string' && q.coreSkillsAndExpertise
+                      ? q.coreSkillsAndExpertise.split(',').map(s => s.trim()).filter(Boolean)
+                      : [])
+                ).map((skill, i) => (
                   <span key={i} className="px-2 py-0.5 rounded bg-blue-500/10 print:bg-gray-200 text-blue-300 print:text-black text-[11px]">
                     {skill}
                   </span>
@@ -529,7 +534,12 @@ ${client.adminNotes ? `DOPORUČENÍ KONZULTANTA PODNIKAI:\n${client.adminNotes}`
             <div className="bg-white/[0.02] print:bg-gray-50 border border-white/10 print:border-gray-200 rounded-xl p-3.5 space-y-1.5">
               <span className="text-[10px] font-bold text-rose-400 print:text-gray-600 uppercase block">Červené linie (Odmítá):</span>
               <div className="flex flex-wrap gap-1">
-                {q.strictDislikesAndRedLines?.map((red, i) => (
+                {(Array.isArray(q.strictDislikesAndRedLines)
+                  ? q.strictDislikesAndRedLines
+                  : (typeof q.strictDislikesAndRedLines === 'string' && q.strictDislikesAndRedLines
+                      ? q.strictDislikesAndRedLines.split(',').map(s => s.trim()).filter(Boolean)
+                      : [])
+                ).map((red, i) => (
                   <span key={i} className="px-2 py-0.5 rounded bg-rose-500/10 print:bg-gray-200 text-rose-300 print:text-black text-[11px]">
                     ⛔ {red}
                   </span>

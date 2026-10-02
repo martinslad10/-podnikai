@@ -118,6 +118,45 @@ assert(
 );
 console.log('  ✅ PASS: Categorical statement replaced with neutral capacity model');
 
+// 8. Test Questions 8–12 with commas and spaces as strings
+console.log('\n[CHECK 8: Questions 8–12 Comma and Space Input Fidelity]');
+const userStringQ: BusinessStartQuestionnaire = {
+  ...emptyQ,
+  clientName: 'Jan Novák',
+  clientEmail: 'jan@example.cz',
+  mainGoal: 'Chci otevřít masérské studio',
+  targetMonthlyIncome: '50 000 Kč',
+  startingCapital: 'do 15 000 Kč',
+  weeklyTimeCommitment: '20 hodin týdně',
+  operatingModel: 'offline',
+  preferredWorkType: 'Práce s lidmi osobně',
+  customPreferredWorkType: 'Osobní fyzická služba',
+  coreSkillsAndExpertise: 'Masáže, práce s lidmi, sport',
+  passionsAndInterests: 'Zdravý životní styl, fitness, regenerace',
+  strictDislikesAndRedLines: 'Celodenní sezení u PC, cold calling, administrativa',
+  existingAssetsAndNetwork: 'Kontakty v oboru, LinkedIn, stávající klienti',
+  personalConstraints: 'Pouze večery a pátky, bez možnosti investovat'
+};
+
+// Check that string representation retains exact commas and spaces
+assert.strictEqual(userStringQ.coreSkillsAndExpertise, 'Masáže, práce s lidmi, sport');
+assert.strictEqual(userStringQ.passionsAndInterests, 'Zdravý životní styl, fitness, regenerace');
+assert.strictEqual(userStringQ.strictDislikesAndRedLines, 'Celodenní sezení u PC, cold calling, administrativa');
+assert.strictEqual(userStringQ.existingAssetsAndNetwork, 'Kontakty v oboru, LinkedIn, stávající klienti');
+assert.strictEqual(userStringQ.personalConstraints, 'Pouze večery a pátky, bez možnosti investovat');
+
+// Check that analysis runs cleanly and parses items for engine
+const stringAnalysis = generateDeterministicBusinessStartAnalysis(userStringQ);
+assert(stringAnalysis.sourceOfTruthAudit?.skillsProvided?.includes('Masáže'), 'Skills include Masáže');
+assert(stringAnalysis.sourceOfTruthAudit?.skillsProvided?.includes('práce s lidmi'), 'Skills include práce s lidmi');
+assert(stringAnalysis.sourceOfTruthAudit?.skillsProvided?.includes('sport'), 'Skills include sport');
+assert(stringAnalysis.sourceOfTruthAudit?.passionsProvided?.includes('Zdravý životní styl'), 'Passions include Zdravý životní styl');
+assert(stringAnalysis.sourceOfTruthAudit?.passionsProvided?.includes('fitness'), 'Passions include fitness');
+assert(stringAnalysis.sourceOfTruthAudit?.passionsProvided?.includes('regenerace'), 'Passions include regenerace');
+assert(stringAnalysis.sourceOfTruthAudit?.strictRedLines?.includes('cold calling'), 'Red lines include cold calling');
+assert.strictEqual(stringAnalysis.sourceOfTruthAudit?.existingAssets, 'Kontakty v oboru, LinkedIn, stávající klienti');
+console.log('  ✅ PASS: Exact comma-separated strings with spaces preserved and correctly analyzed');
+
 console.log('\n================================================================');
-console.log('🎉 ALL 7 AUDIT CHECKS PASSED PERFECTLY!');
+console.log('🎉 ALL 8 AUDIT CHECKS PASSED PERFECTLY!');
 console.log('================================================================');

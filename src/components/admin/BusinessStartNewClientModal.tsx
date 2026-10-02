@@ -85,31 +85,43 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
     setStepError('');
   };
 
+  const getArrayField = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines'): string[] => {
+    const val = formData[field];
+    return Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',').map(s => s.trim()).filter(Boolean) : []);
+  };
+
   const handleArrayChange = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines', index: number, val: string) => {
     setFormData(prev => {
-      const arr = [...prev[field]];
+      const arr = [...(Array.isArray(prev[field]) ? (prev[field] as string[]) : (typeof prev[field] === 'string' && prev[field] ? (prev[field] as string).split(',').map(s => s.trim()).filter(Boolean) : []))];
       arr[index] = val;
       return { ...prev, [field]: arr };
     });
   };
 
   const handleAddItem = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines', defaultVal: string = '') => {
-    setFormData(prev => ({ ...prev, [field]: [...prev[field], defaultVal] }));
+    setFormData(prev => {
+      const arr = Array.isArray(prev[field]) ? (prev[field] as string[]) : (typeof prev[field] === 'string' && prev[field] ? (prev[field] as string).split(',').map(s => s.trim()).filter(Boolean) : []);
+      return { ...prev, [field]: [...arr, defaultVal] };
+    });
   };
 
   const handleToggleItem = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines', val: string) => {
     setFormData(prev => {
-      const exists = prev[field].includes(val);
+      const arr = Array.isArray(prev[field]) ? (prev[field] as string[]) : (typeof prev[field] === 'string' && prev[field] ? (prev[field] as string).split(',').map(s => s.trim()).filter(Boolean) : []);
+      const exists = arr.includes(val);
       if (exists) {
-        return { ...prev, [field]: prev[field].filter(item => item !== val) };
+        return { ...prev, [field]: arr.filter(item => item !== val) };
       } else {
-        return { ...prev, [field]: [...prev[field], val] };
+        return { ...prev, [field]: [...arr, val] };
       }
     });
   };
 
   const handleRemoveItem = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines', index: number) => {
-    setFormData(prev => ({ ...prev, [field]: prev[field].filter((_, i) => i !== index) }));
+    setFormData(prev => {
+      const arr = Array.isArray(prev[field]) ? (prev[field] as string[]) : (typeof prev[field] === 'string' && prev[field] ? (prev[field] as string).split(',').map(s => s.trim()).filter(Boolean) : []);
+      return { ...prev, [field]: arr.filter((_, i) => i !== index) };
+    });
   };
 
   const validateStep = (stepNumber: number): boolean => {
@@ -692,7 +704,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
                   'Jazyky & překlady',
                   'Mentoring & doučování'
                 ].map((skill, idx) => {
-                  const selected = q.coreSkillsAndExpertise.includes(skill);
+                  const selected = getArrayField('coreSkillsAndExpertise').includes(skill);
                   return (
                     <button
                       key={idx}
@@ -713,7 +725,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
               {/* Dynamic array inputs */}
               <div className="pt-2 space-y-2">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span>Vybrané a vlastní dovednosti ({q.coreSkillsAndExpertise.length}):</span>
+                  <span>Vybrané a vlastní dovednosti ({getArrayField('coreSkillsAndExpertise').length}):</span>
                   <button
                     type="button"
                     onClick={() => handleAddItem('coreSkillsAndExpertise')}
@@ -723,7 +735,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
                   </button>
                 </div>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {q.coreSkillsAndExpertise.map((item, idx) => (
+                  {getArrayField('coreSkillsAndExpertise').map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2">
                       <input
                         type="text"
@@ -769,7 +781,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
                   'Psi & domácí mazlíčci',
                   'Kultura, knihy & umění'
                 ].map((passion, idx) => {
-                  const selected = q.passionsAndInterests.includes(passion);
+                  const selected = getArrayField('passionsAndInterests').includes(passion);
                   return (
                     <button
                       key={idx}
@@ -789,7 +801,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
 
               <div className="pt-2 space-y-2">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span>Vybrané obory ({q.passionsAndInterests.length}):</span>
+                  <span>Vybrané obory ({getArrayField('passionsAndInterests').length}):</span>
                   <button
                     type="button"
                     onClick={() => handleAddItem('passionsAndInterests')}
@@ -799,7 +811,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
                   </button>
                 </div>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {q.passionsAndInterests.map((item, idx) => (
+                  {getArrayField('passionsAndInterests').map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2">
                       <input
                         type="text"
@@ -843,7 +855,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
                   'Manuální těžká práce',
                   'Komplikovaná administrativa a licence'
                 ].map((redLine, idx) => {
-                  const selected = q.strictDislikesAndRedLines.includes(redLine);
+                  const selected = getArrayField('strictDislikesAndRedLines').includes(redLine);
                   return (
                     <button
                       key={idx}
@@ -863,7 +875,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
 
               <div className="pt-2 space-y-2">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-                  <span>Aktivní červené linie ({q.strictDislikesAndRedLines.length}):</span>
+                  <span>Aktivní červené linie ({getArrayField('strictDislikesAndRedLines').length}):</span>
                   <button
                     type="button"
                     onClick={() => handleAddItem('strictDislikesAndRedLines')}
@@ -873,7 +885,7 @@ export const BusinessStartNewClientModal: React.FC<NewClientModalProps> = ({
                   </button>
                 </div>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {q.strictDislikesAndRedLines.map((item, idx) => (
+                  {getArrayField('strictDislikesAndRedLines').map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2">
                       <input
                         type="text"

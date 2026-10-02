@@ -26,44 +26,76 @@ interface QuestionnaireTabProps {
   isSaving: boolean;
 }
 
+function normalizeAdminQuestionnaire(q: BusinessStartQuestionnaire): BusinessStartQuestionnaire {
+  return {
+    ...q,
+    coreSkillsAndExpertise: Array.isArray(q.coreSkillsAndExpertise)
+      ? q.coreSkillsAndExpertise
+      : (typeof q.coreSkillsAndExpertise === 'string' && q.coreSkillsAndExpertise
+          ? q.coreSkillsAndExpertise.split(',').map(s => s.trim()).filter(Boolean)
+          : []),
+    passionsAndInterests: Array.isArray(q.passionsAndInterests)
+      ? q.passionsAndInterests
+      : (typeof q.passionsAndInterests === 'string' && q.passionsAndInterests
+          ? q.passionsAndInterests.split(',').map(s => s.trim()).filter(Boolean)
+          : []),
+    strictDislikesAndRedLines: Array.isArray(q.strictDislikesAndRedLines)
+      ? q.strictDislikesAndRedLines
+      : (typeof q.strictDislikesAndRedLines === 'string' && q.strictDislikesAndRedLines
+          ? q.strictDislikesAndRedLines.split(',').map(s => s.trim()).filter(Boolean)
+          : []),
+  };
+}
+
 export const BusinessStartQuestionnaireTab: React.FC<QuestionnaireTabProps> = ({
   client,
   onSaveQuestionnaire,
   isSaving
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<BusinessStartQuestionnaire>(client.questionnaire);
+  const [formData, setFormData] = useState<BusinessStartQuestionnaire>(normalizeAdminQuestionnaire(client.questionnaire));
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Sync if client changes
   React.useEffect(() => {
-    setFormData(client.questionnaire);
+    setFormData(normalizeAdminQuestionnaire(client.questionnaire));
   }, [client]);
 
   const handleFieldChange = (field: keyof BusinessStartQuestionnaire, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const getArrayField = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines'): string[] => {
+    const val = q[field];
+    return Array.isArray(val) ? val : (typeof val === 'string' && val ? val.split(',').map(s => s.trim()).filter(Boolean) : []);
+  };
+
   const handleArrayFieldChange = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines', index: number, value: string) => {
     setFormData(prev => {
-      const arr = [...prev[field]];
+      const arr = [...(Array.isArray(prev[field]) ? (prev[field] as string[]) : (typeof prev[field] === 'string' && prev[field] ? (prev[field] as string).split(',').map(s => s.trim()).filter(Boolean) : []))];
       arr[index] = value;
       return { ...prev, [field]: arr };
     });
   };
 
   const handleAddArrayItem = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines') => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: [...prev[field], '']
-    }));
+    setFormData(prev => {
+      const arr = Array.isArray(prev[field]) ? (prev[field] as string[]) : (typeof prev[field] === 'string' && prev[field] ? (prev[field] as string).split(',').map(s => s.trim()).filter(Boolean) : []);
+      return {
+        ...prev,
+        [field]: [...arr, '']
+      };
+    });
   };
 
   const handleRemoveArrayItem = (field: 'coreSkillsAndExpertise' | 'passionsAndInterests' | 'strictDislikesAndRedLines', index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: prev[field].filter((_, i) => i !== index)
-    }));
+    setFormData(prev => {
+      const arr = Array.isArray(prev[field]) ? (prev[field] as string[]) : (typeof prev[field] === 'string' && prev[field] ? (prev[field] as string).split(',').map(s => s.trim()).filter(Boolean) : []);
+      return {
+        ...prev,
+        [field]: arr.filter((_, i) => i !== index)
+      };
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -468,7 +500,7 @@ export const BusinessStartQuestionnaireTab: React.FC<QuestionnaireTabProps> = ({
           </div>
           {isEditing ? (
             <div className="space-y-2">
-              {q.coreSkillsAndExpertise.map((skill, i) => (
+              {getArrayField('coreSkillsAndExpertise').map((skill, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input
                     type="text"
@@ -488,7 +520,7 @@ export const BusinessStartQuestionnaireTab: React.FC<QuestionnaireTabProps> = ({
             </div>
           ) : (
             <div className="flex flex-wrap gap-1.5">
-              {q.coreSkillsAndExpertise.map((skill, i) => (
+              {getArrayField('coreSkillsAndExpertise').map((skill, i) => (
                 <span key={i} className="text-[11px] px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium">
                   {skill}
                 </span>
@@ -516,7 +548,7 @@ export const BusinessStartQuestionnaireTab: React.FC<QuestionnaireTabProps> = ({
           </div>
           {isEditing ? (
             <div className="space-y-2">
-              {q.passionsAndInterests.map((p, i) => (
+              {getArrayField('passionsAndInterests').map((p, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input
                     type="text"
@@ -536,7 +568,7 @@ export const BusinessStartQuestionnaireTab: React.FC<QuestionnaireTabProps> = ({
             </div>
           ) : (
             <div className="flex flex-wrap gap-1.5">
-              {q.passionsAndInterests.map((p, i) => (
+              {getArrayField('passionsAndInterests').map((p, i) => (
                 <span key={i} className="text-[11px] px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-300 border border-rose-500/20 font-medium">
                   {p}
                 </span>
@@ -564,7 +596,7 @@ export const BusinessStartQuestionnaireTab: React.FC<QuestionnaireTabProps> = ({
           </div>
           {isEditing ? (
             <div className="space-y-2">
-              {q.strictDislikesAndRedLines.map((dislike, i) => (
+              {getArrayField('strictDislikesAndRedLines').map((dislike, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input
                     type="text"
@@ -584,7 +616,7 @@ export const BusinessStartQuestionnaireTab: React.FC<QuestionnaireTabProps> = ({
             </div>
           ) : (
             <div className="flex flex-wrap gap-1.5">
-              {q.strictDislikesAndRedLines.map((dislike, i) => (
+              {getArrayField('strictDislikesAndRedLines').map((dislike, i) => (
                 <span key={i} className="text-[11px] px-2.5 py-1 rounded-lg bg-rose-950/40 text-rose-300 border border-rose-800/40 font-medium">
                   🚫 {dislike}
                 </span>

@@ -210,8 +210,16 @@ export const BusinessStartAnalysisTab: React.FC<AnalysisTabProps> = ({
               Červené linie (Zákazy & Nechce dělat):
             </span>
             <div className="flex flex-wrap gap-1">
-              {q.strictDislikesAndRedLines && q.strictDislikesAndRedLines.length > 0 ? (
-                q.strictDislikesAndRedLines.map((r, i) => (
+              {(Array.isArray(q.strictDislikesAndRedLines)
+                ? q.strictDislikesAndRedLines
+                : (typeof q.strictDislikesAndRedLines === 'string' && q.strictDislikesAndRedLines
+                    ? q.strictDislikesAndRedLines.split(',').map(s => s.trim()).filter(Boolean)
+                    : [])
+              ).length > 0 ? (
+                (Array.isArray(q.strictDislikesAndRedLines)
+                  ? q.strictDislikesAndRedLines
+                  : (q.strictDislikesAndRedLines as string).split(',').map(s => s.trim()).filter(Boolean)
+                ).map((r, i) => (
                   <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/25 font-medium">
                     ✕ {r}
                   </span>
@@ -226,7 +234,7 @@ export const BusinessStartAnalysisTab: React.FC<AnalysisTabProps> = ({
               Klíčové dovednosti & Existující aktiva:
             </span>
             <p className="text-[11px] text-slate-300 leading-snug">
-              {q.coreSkillsAndExpertise?.join(', ') || 'Neuvedeno'}
+              {Array.isArray(q.coreSkillsAndExpertise) ? q.coreSkillsAndExpertise.join(', ') : (q.coreSkillsAndExpertise || 'Neuvedeno')}
               {q.existingAssetsAndNetwork ? ` | Aktiva: ${q.existingAssetsAndNetwork}` : ''}
             </p>
           </div>

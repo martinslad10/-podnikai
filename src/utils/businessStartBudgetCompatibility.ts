@@ -36,12 +36,16 @@ export function parseClientBudget(q: BusinessStartQuestionnaire): ClientBudgetPr
   const rawLower = raw.toLowerCase();
 
   // Check if client explicitly expresses desire to start lean despite having budget
+  const redLinesStr = Array.isArray(q.strictDislikesAndRedLines)
+    ? q.strictDislikesAndRedLines.join(' ')
+    : (q.strictDislikesAndRedLines || '');
+
   const contextText = [
     rawLower,
     q.mainGoal || '',
     q.personalConstraints || '',
     q.customPreferredWorkType || '',
-    (q.strictDislikesAndRedLines || []).join(' ')
+    redLinesStr
   ].join(' ').toLowerCase();
 
   const wantsLeanBootstrap =

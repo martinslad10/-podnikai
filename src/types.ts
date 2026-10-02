@@ -553,13 +553,13 @@ export interface BusinessStartQuestionnaire {
   customPreferredWorkType?: string; // Vlastní text klienta má vždy prioritu před předvolenou možností
 
   // 8. Klíčové dovednosti, expertíza a silné stránky
-  coreSkillsAndExpertise: string[];
+  coreSkillsAndExpertise: string[] | string;
 
   // 9. Zájmy, obory a témata, která klienta baví
-  passionsAndInterests: string[];
+  passionsAndInterests: string[] | string;
 
   // 10. Červené linie / Čemu se klient striktně vyhýbá
-  strictDislikesAndRedLines: string[];
+  strictDislikesAndRedLines: string[] | string;
 
   // 11. Dosavadní síť kontaktů, existující aktiva a výhody
   existingAssetsAndNetwork: string;

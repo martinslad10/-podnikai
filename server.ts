@@ -3225,6 +3225,16 @@ async function runCanonicalBusinessStartAnalysis(q: BusinessStartQuestionnaire):
         const isStrictZeroBudget = q.startingCapital.includes('0 Kč') || q.startingCapital.toLowerCase().includes('nula');
         const effectiveWorkType = constraints.effectiveWorkType;
 
+        const skillsText = Array.isArray(q.coreSkillsAndExpertise)
+          ? q.coreSkillsAndExpertise.join(', ')
+          : (q.coreSkillsAndExpertise || 'neuvedeny');
+        const passionsText = Array.isArray(q.passionsAndInterests)
+          ? q.passionsAndInterests.join(', ')
+          : (q.passionsAndInterests || 'neuvedeny');
+        const redLinesText = Array.isArray(q.strictDislikesAndRedLines)
+          ? q.strictDislikesAndRedLines.join(', ')
+          : (q.strictDislikesAndRedLines || 'žádné');
+
         const prompt = `Jsi PODNIKAI Business Start Engine — analytický a strategický engine pro tvorbu individuálního podnikatelského plánu.
 VERZE: SOURCE OF TRUTH v1.0
 METODIKA: 12 HLAVNÍCH OTÁZEK
@@ -3236,7 +3246,7 @@ HLAVNÍ PRINCIP: SOURCE OF TRUTH & POŘADÍ ROZHODOVÁNÍ:
 1. SOURCE OF TRUTH: Vstupní údaje klienta jsou jediným autoritativním zdrojem informací o klientovi.
 2. CLIENT GOAL: Cíl klienta (${q.mainGoal}) je prioritní zdroj záměru. Pokud klient uvádí konkrétní cíl (např. vizážistka, masérské studio, zedník, online marketing), systém NESMÍ tento cíl transformovat na jiný obor!
 3. PREFERRED WORK TYPE: ${effectiveWorkType} ${constraints.isCustomTextPriority ? '(Vlastní text klienta – má absolutní přednost)' : ''}.
-4. RED LINES: Striktně respektuj odmítnuté činnosti (${q.strictDislikesAndRedLines?.join(', ') || 'žádné'}).
+4. RED LINES: Striktně respektuj odmítnuté činnosti (${redLinesText}).
 5. HARD FILTER KANDIDÁTNÍCH MODELŮ (PROBÍHÁ PŘED VÝBĚREM KANDIDÁTŮ!):
 ${constraints.isPhysicalPersonalLocal ? `*** STRIKTNÍ HARD CONSTRAINT: KLIENT POŽADUJE FYZICKOU / LOKÁLNÍ / OSOBNÍ SLUŽBU ***
 Cíl klienta: "${q.mainGoal}". Preferovaný typ práce: "${effectiveWorkType}".
@@ -3269,9 +3279,9 @@ PROFIL KLIENTA (METODIKA 12 OTÁZEK):
 7. Požadovaný model provozu a preferovaný typ práce:
    - Provozní model: ${q.operatingModel.toUpperCase()}
    - Preferovaný typ práce: ${effectiveWorkType} ${q.customPreferredWorkType?.trim() ? '(Vlastní text klienta – má absolutní přednost)' : ''}
-8. Klíčové dovednosti a silné stránky: ${q.coreSkillsAndExpertise?.join(', ') || 'neuvedeny'}
-9. Zájmy a obory: ${q.passionsAndInterests?.join(', ') || 'neuvedeny'}
-10. Červené linie (striktně odmítané): ${q.strictDislikesAndRedLines?.join(', ') || 'žádné'}
+8. Klíčové dovednosti a silné stránky: ${skillsText}
+9. Zájmy a obory: ${passionsText}
+10. Červené linie (striktně odmítané): ${redLinesText}
 11. Dosavadní aktiva a síť kontaktů: ${q.existingAssetsAndNetwork || 'neuvedeny'}
 12. Osobní překážky a specifické podmínky: ${q.personalConstraints || 'žádné'}
 
@@ -3637,8 +3647,21 @@ Vrať validní JSON odpovídající schématu bez jakéhokoliv markdown obalu.`;
               operatingModelLimit: q.operatingModel.toUpperCase(),
               mainGoalLimit: q.mainGoal,
               preferredWorkTypeLimit: q.preferredWorkType || 'Dle shody',
-              strictRedLines: q.strictDislikesAndRedLines,
-              skillsProvided: q.coreSkillsAndExpertise,
+              strictRedLines: Array.isArray(q.strictDislikesAndRedLines)
+                ? q.strictDislikesAndRedLines
+                : (typeof q.strictDislikesAndRedLines === 'string'
+                    ? q.strictDislikesAndRedLines.split(',').map(s => s.trim()).filter(Boolean)
+                    : []),
+              skillsProvided: Array.isArray(q.coreSkillsAndExpertise)
+                ? q.coreSkillsAndExpertise
+                : (typeof q.coreSkillsAndExpertise === 'string'
+                    ? q.coreSkillsAndExpertise.split(',').map(s => s.trim()).filter(Boolean)
+                    : []),
+              passionsProvided: Array.isArray(q.passionsAndInterests)
+                ? q.passionsAndInterests
+                : (typeof q.passionsAndInterests === 'string'
+                    ? q.passionsAndInterests.split(',').map(s => s.trim()).filter(Boolean)
+                    : []),
               existingAssets: q.existingAssetsAndNetwork || 'Neuvedeno',
               unknownsOrBlockers: []
             };
@@ -3778,15 +3801,6 @@ app.post('/api/business-start/order/draft', async (req, res) => {
       ...createEmptyQuestionnaire(),
       ...rawQ
     };
-    if (typeof safeQ.coreSkillsAndExpertise === 'string') {
-      safeQ.coreSkillsAndExpertise = (safeQ.coreSkillsAndExpertise as any).split(',').map((s: string) => s.trim()).filter(Boolean);
-    }
-    if (typeof safeQ.strictDislikesAndRedLines === 'string') {
-      safeQ.strictDislikesAndRedLines = (safeQ.strictDislikesAndRedLines as any).split(',').map((s: string) => s.trim()).filter(Boolean);
-    }
-    if (typeof safeQ.passionsAndInterests === 'string') {
-      safeQ.passionsAndInterests = (safeQ.passionsAndInterests as any).split(',').map((s: string) => s.trim()).filter(Boolean);
-    }
     const clients = await readPersistedBusinessStartClients();
     const now = new Date().toISOString();
 

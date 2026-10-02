@@ -130,8 +130,23 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
   const clientBudget = parseClientBudget(q);
   const isZeroBudget = clientBudget.isZeroOrMinimalBudget;
   const isSubstantial = clientBudget.hasSubstantialCapital;
-  const skillsStr = (q.coreSkillsAndExpertise || []).join(', ');
-  const passionsStr = (q.passionsAndInterests || []).join(', ');
+  const parsedSkillsList: string[] = Array.isArray(q.coreSkillsAndExpertise)
+    ? q.coreSkillsAndExpertise
+    : (typeof q.coreSkillsAndExpertise === 'string'
+        ? q.coreSkillsAndExpertise.split(',').map(s => s.trim()).filter(Boolean)
+        : []);
+  const parsedPassionsList: string[] = Array.isArray(q.passionsAndInterests)
+    ? q.passionsAndInterests
+    : (typeof q.passionsAndInterests === 'string'
+        ? q.passionsAndInterests.split(',').map(s => s.trim()).filter(Boolean)
+        : []);
+  const parsedRedLinesList: string[] = Array.isArray(q.strictDislikesAndRedLines)
+    ? q.strictDislikesAndRedLines
+    : (typeof q.strictDislikesAndRedLines === 'string'
+        ? q.strictDislikesAndRedLines.split(',').map(s => s.trim()).filter(Boolean)
+        : []);
+  const skillsStr = parsedSkillsList.join(', ');
+  const passionsStr = parsedPassionsList.join(', ');
   const name = q.clientName.trim() || 'Klient';
   const goalLower = (q.mainGoal || '').toLowerCase();
   const careerLower = (q.currentCareerSituation || '').toLowerCase();
@@ -902,7 +917,7 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
       : isElectricianDomain ? 'Elektroinstalační a servisní práce pro domácnosti a firmy'
       : isHairDomain ? 'Profesionální kadeřnické a holičské služby (křeslo v salonu i mobilní servis)'
       : isTrainerDomain ? 'Osobní fitness tréninky a pohybová konzultace pro klienty'
-      : `Specializovaná lokální služba: ${q.coreSkillsAndExpertise[0] || 'Kvalitní řemeslný a technický servis v regionu'}`;
+      : `Specializovaná lokální služba: ${parsedSkillsList[0] || 'Kvalitní řemeslný a technický servis v regionu'}`;
 
     primaryTagline = 'Spolehlivé řešení lokálních zakázek s důrazem na precizní řemeslo a osobní doporučení';
     primaryModel = 'Lokální fyzická služba u zákazníka s okamžitou platbou po předání díla';
@@ -1600,7 +1615,7 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
     blueprintPricingStrategy = 'Fixní nebo položková zaváděcí sazba pro první referenční zakázky, následně standardní modelový cenový předpoklad.';
     blueprintPrice = '[RECOMMENDATION / SCENARIO] 4 900 – 7 900 Kč za jednorázové dodání (nebo 8 500 Kč/měsíc za retainer)';
     blueprintUpsellOption = 'Rozšířená měsíční podpora, procesní audit a dlouhodobá správa systémů.';
-    blueprintSalesChannel = q.strictDislikesAndRedLines.some(r => r.toLowerCase().includes('cold'))
+    blueprintSalesChannel = parsedRedLinesList.some(r => r.toLowerCase().includes('cold'))
       ? 'Personalizovaný organický kontakt přes profesní síť a doporučení (BEZ cold callingu)'
       : 'Cílený přímý outreach na vedoucí pracovníky';
     blueprintIcebreaker = 'Dobrý den, zaujalo mě vaše zaměření v oboru. Věnuji se zefektivnění procesů pro podnikatele a rád bych vám nezávazně poslal 3 rychlé tipy, jak ušetřit hodiny práce týdně. Mohu vám poslat krátký odkaz?';
@@ -1798,12 +1813,8 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
   // =========================================================================
   const capitalUsagePlan = generateCapitalUsagePlan(primaryCandidate, clientBudget, constraints.detectedDomain);
 
-  const safeRedLinesList = Array.isArray(q.strictDislikesAndRedLines) 
-    ? q.strictDislikesAndRedLines 
-    : (typeof (q as any).strictDislikesAndRedLines === 'string' && (q as any).strictDislikesAndRedLines.trim() ? [(q as any).strictDislikesAndRedLines.trim()] : []);
-  const safeSkillsList = Array.isArray(q.coreSkillsAndExpertise) 
-    ? q.coreSkillsAndExpertise 
-    : (typeof (q as any).coreSkillsAndExpertise === 'string' && (q as any).coreSkillsAndExpertise.trim() ? [(q as any).coreSkillsAndExpertise.trim()] : []);
+  const safeRedLinesList = parsedRedLinesList;
+  const safeSkillsList = parsedSkillsList;
 
   const redLinesNote = safeRedLinesList.length > 0 ? safeRedLinesList.join(', ') : ((q as any).redLines || 'bez specifických zákazů');
 
@@ -1963,7 +1974,7 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
       // 8 hloubkových validačních kontrol (Oprava #10)
       primaryDirectionMatchesTypeOfWork: constraints.isPhysicalPersonalLocal ? !primaryModel.toLowerCase().includes('100% digitální') : true,
       offerMatchesTypeOfWork: constraints.isPhysicalPersonalLocal ? !blueprintCoreOffer.toLowerCase().includes('pouze online kurz') : true,
-      salesChannelsRespectRedLines: !q.strictDislikesAndRedLines.some(rl => {
+      salesChannelsRespectRedLines: !parsedRedLinesList.some(rl => {
         const rlLower = rl.toLowerCase();
         if (rlLower.includes('cold') || rlLower.includes('navoláv') || rlLower.includes('telefon')) {
           return blueprintSalesChannel.toLowerCase().includes('studené navolávání') || blueprintSalesChannel.toLowerCase().includes('cold calling');
@@ -1985,9 +1996,9 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
       operatingModelLimit: (q.operatingModel || 'offline').toUpperCase(),
       mainGoalLimit: q.mainGoal || 'Neuvedeno',
       preferredWorkTypeLimit: q.preferredWorkType || 'Dle shody',
-      strictRedLines: q.strictDislikesAndRedLines || [],
-      skillsProvided: q.coreSkillsAndExpertise || [],
-      passionsProvided: q.passionsAndInterests || [],
+      strictRedLines: parsedRedLinesList,
+      skillsProvided: parsedSkillsList,
+      passionsProvided: parsedPassionsList,
       existingAssets: q.existingAssetsAndNetwork || 'Neuvedeno',
       unknownsOrBlockers: []
     },

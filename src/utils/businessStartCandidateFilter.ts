@@ -62,10 +62,10 @@ export interface ClientHardConstraints {
 export function evaluateClientConstraints(q: BusinessStartQuestionnaire): ClientHardConstraints {
   const goalLower = (q.mainGoal || '').toLowerCase().trim();
   const careerLower = (q.currentCareerSituation || '').toLowerCase().trim();
-  const skillsLower = (q.coreSkillsAndExpertise || []).join(' ').toLowerCase().trim();
-  const passionsLower = (q.passionsAndInterests || []).join(' ').toLowerCase().trim();
-  const rawRedLines = q.strictDislikesAndRedLines || [];
-  const dislikesLower = rawRedLines.join(' ').toLowerCase().trim();
+  const skillsLower = (Array.isArray(q.coreSkillsAndExpertise) ? q.coreSkillsAndExpertise.join(' ') : String(q.coreSkillsAndExpertise || '')).toLowerCase().trim();
+  const passionsLower = (Array.isArray(q.passionsAndInterests) ? q.passionsAndInterests.join(' ') : String(q.passionsAndInterests || '')).toLowerCase().trim();
+  const rawRedLines = Array.isArray(q.strictDislikesAndRedLines) ? q.strictDislikesAndRedLines : (typeof q.strictDislikesAndRedLines === 'string' ? (q.strictDislikesAndRedLines as string).split(',').map(s => s.trim()).filter(Boolean) : []);
+  const dislikesLower = (Array.isArray(q.strictDislikesAndRedLines) ? q.strictDislikesAndRedLines.join(' ') : String(q.strictDislikesAndRedLines || '')).toLowerCase().trim();
 
   // Custom text has ABSOLUTE priority over pre-selected option
   const hasCustomText = Boolean(q.customPreferredWorkType && q.customPreferredWorkType.trim());
@@ -289,7 +289,11 @@ export function evaluateClientConstraints(q: BusinessStartQuestionnaire): Client
     rawStartingCapital: q.startingCapital,
     rawTimeCommitment: q.weeklyTimeCommitment,
     rawRedLines,
-    rawSkills: q.coreSkillsAndExpertise || [],
+    rawSkills: Array.isArray(q.coreSkillsAndExpertise)
+      ? q.coreSkillsAndExpertise
+      : (typeof q.coreSkillsAndExpertise === 'string'
+          ? q.coreSkillsAndExpertise.split(',').map(s => s.trim()).filter(Boolean)
+          : []),
     detectedDomain,
     goalHighlightsDomain: goalDemandsPhysicalPersonal,
     effectiveWorkType,

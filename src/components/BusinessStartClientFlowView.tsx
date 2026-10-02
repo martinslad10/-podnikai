@@ -821,8 +821,11 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   </label>
                   <input
                     type="text"
-                    value={formData.coreSkillsAndExpertise?.join(', ') || ''}
-                    onChange={e => handleFieldChange('coreSkillsAndExpertise', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={Array.isArray(formData.coreSkillsAndExpertise) ? formData.coreSkillsAndExpertise.join(', ') : (formData.coreSkillsAndExpertise ?? '')}
+                    onChange={e => handleFieldChange('coreSkillsAndExpertise', e.target.value)}
                     placeholder="Např. Masáže, regenerace, komunikace s lidmi"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-blue-500"
                   />
@@ -833,8 +836,11 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   </label>
                   <input
                     type="text"
-                    value={formData.passionsAndInterests?.join(', ') || ''}
-                    onChange={e => handleFieldChange('passionsAndInterests', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={Array.isArray(formData.passionsAndInterests) ? formData.passionsAndInterests.join(', ') : (formData.passionsAndInterests ?? '')}
+                    onChange={e => handleFieldChange('passionsAndInterests', e.target.value)}
                     placeholder="Např. Zdravý životní styl, gastro, káva, udržitelnost, technologie"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-blue-500"
                   />
@@ -848,8 +854,11 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 </label>
                 <input
                   type="text"
-                  value={formData.strictDislikesAndRedLines?.join(', ') || ''}
-                  onChange={e => handleFieldChange('strictDislikesAndRedLines', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={Array.isArray(formData.strictDislikesAndRedLines) ? formData.strictDislikesAndRedLines.join(', ') : (formData.strictDislikesAndRedLines ?? '')}
+                  onChange={e => handleFieldChange('strictDislikesAndRedLines', e.target.value)}
                   placeholder="Např. Celodenní sezení u PC, cold calling, multilevel"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-blue-500"
                 />
@@ -863,7 +872,10 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   </label>
                   <input
                     type="text"
-                    value={formData.existingAssetsAndNetwork || ''}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={formData.existingAssetsAndNetwork ?? ''}
                     onChange={e => handleFieldChange('existingAssetsAndNetwork', e.target.value)}
                     placeholder="Např. Kontakty v oboru, profil na LinkedIn, stávající PC/vybavení"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-blue-500"
@@ -875,7 +887,10 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   </label>
                   <input
                     type="text"
-                    value={formData.personalConstraints || ''}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={formData.personalConstraints ?? ''}
                     onChange={e => handleFieldChange('personalConstraints', e.target.value)}
                     placeholder="Např. Pouze večery a pátky, bez možnosti investovat do drahého vybavení"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-blue-500"
