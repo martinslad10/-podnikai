@@ -159,8 +159,26 @@ async function runTests() {
   assert(paidOrderData.analysis.capitalUsagePlan, 'Capital usage plan exists');
   console.log(`  ✅ PASS: Full Business Report released. Blueprint: "${paidOrderData.analysis.primaryDirectionBlueprint.directionTitle}"`);
 
-  // STEP 9: PDF Generation & PDF_READY Status
-  console.log('\n[STEP 9: Marking PDF Ready & Download Flow]');
+  // STEP 9: Real PDF Generation & Download Flow
+  console.log('\n[STEP 9: Real PDF Generation & Download Flow]');
+  // 9A: Verify Real PDF download endpoint
+  const realPdfRes = await fetch(`${BASE_URL}/api/business-start/order/${orderId}/pdf?token=${orderToken}`, {
+    headers: { 'x-order-token': orderToken }
+  });
+  assert.strictEqual(realPdfRes.status, 200, 'Real PDF download returns HTTP 200');
+  const contentType = realPdfRes.headers.get('content-type') || '';
+  assert(contentType.includes('application/pdf'), `Content-Type must be application/pdf, got ${contentType}`);
+  const contentDisp = realPdfRes.headers.get('content-disposition') || '';
+  assert(contentDisp.includes('attachment'), `Content-Disposition must contain attachment, got ${contentDisp}`);
+  assert(contentDisp.includes('podnikai-business-start.pdf'), `Content-Disposition must contain filename, got ${contentDisp}`);
+
+  const pdfArrayBuffer = await realPdfRes.arrayBuffer();
+  const pdfBuffer = Buffer.from(pdfArrayBuffer);
+  assert(pdfBuffer.length > 5000, `PDF buffer must be valid and substantial, got ${pdfBuffer.length} bytes`);
+  assert(pdfBuffer.toString('utf8', 0, 5) === '%PDF-', 'PDF buffer must start with valid PDF magic bytes (%PDF-)');
+  console.log(`  ✅ PASS: Real PDF downloaded successfully (${pdfBuffer.length} bytes, valid %PDF- magic bytes)`);
+
+  // 9B: Verify mark-pdf-ready endpoint compatibility
   const pdfRes = await fetch(`${BASE_URL}/api/business-start/order/${orderId}/mark-pdf-ready`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-order-token': orderToken }
@@ -169,7 +187,7 @@ async function runTests() {
   const pdfData = await pdfRes.json();
   assert.strictEqual(pdfData.order.status, 'PDF_READY', 'Order status transitioned to PDF_READY');
   assert(pdfData.order.pdfGeneratedAt, 'pdfGeneratedAt timestamp recorded');
-  console.log('  ✅ PASS: Order status successfully transitioned to PDF_READY');
+  console.log('  ✅ PASS: Order status confirmed as PDF_READY');
 
   console.log('\n================================================================');
   console.log('🎉 ALL 9 AUTOMATED PAID BUSINESS START FLOW GATES 100% PASSED!');

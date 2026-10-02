@@ -1006,4 +1006,45 @@ export async function markBusinessStartPdfReady(
   }
 }
 
+export function getBusinessStartPdfUrl(orderId: string, orderToken: string): string {
+  return `/api/business-start/order/${encodeURIComponent(orderId)}/pdf?token=${encodeURIComponent(orderToken)}`;
+}
+
+export async function downloadBusinessStartPdf(
+  orderId: string,
+  orderToken: string
+): Promise<{ success: boolean; blob?: Blob; error?: string }> {
+  try {
+    const url = getBusinessStartPdfUrl(orderId, orderToken);
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'x-order-token': orderToken
+      }
+    });
+
+    if (!res.ok) {
+      let errMsg = 'Nepodařilo se stáhnout PDF soubor';
+      try {
+        const data = await res.json();
+        if (data.error) errMsg = data.error;
+      } catch {
+        // non-JSON response
+      }
+      return { success: false, error: errMsg };
+    }
+
+    const contentType = res.headers.get('content-type');
+    if (contentType && !contentType.includes('application/pdf')) {
+      return { success: false, error: 'Server nevrátil platný PDF soubor' };
+    }
+
+    const blob = await res.blob();
+    return { success: true, blob };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Chyba sítě při stahování PDF' };
+  }
+}
+
+
 

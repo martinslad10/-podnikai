@@ -36,6 +36,7 @@ import {
   hardFilterCandidateModels,
   isOnlineOnlyBusinessModel
 } from './src/utils/businessStartCandidateFilter';
+import { generateBusinessStartPdfBuffer } from './src/utils/businessStartPdfGenerator';
 import Stripe from 'stripe';
 import type { 
   BusinessStartClient, 
@@ -4213,6 +4214,63 @@ app.post('/api/business-start/order/:orderId/mark-pdf-ready', async (req, res) =
     return res.status(500).json({ error: err.message || 'Chyba při aktualizaci stavu PDF' });
   }
 });
+
+// 8. GET / POST Real PDF Download Endpoint
+const handleBusinessStartPdfDownload = async (req: express.Request, res: express.Response) => {
+  try {
+    const orderId = req.params.orderId;
+    const token = (req.headers['x-order-token'] as string) || (req.query.token as string) || (req.query.orderToken as string) || (req.body && req.body.orderToken);
+
+    const clients = await readPersistedBusinessStartClients();
+    const idx = clients.findIndex(c => c.order?.id === orderId || c.id === orderId);
+    if (idx === -1 || !clients[idx].order) {
+      return res.status(404).json({ error: 'Objednávka nebyla nalezena' });
+    }
+
+    const client = clients[idx];
+    if (!token || token !== client.order!.orderToken) {
+      return res.status(403).json({ error: 'Neplatný bezpečnostní token objednávky' });
+    }
+
+    if (client.order!.paymentStatus !== 'PAID') {
+      return res.status(400).json({ error: 'PDF nelze stáhnout – objednávka není zaplacena.' });
+    }
+
+    const validStatuses: BusinessStartOrderStatus[] = ['REPORT_READY', 'PDF_READY'];
+    if (!validStatuses.includes(client.order!.status)) {
+      return res.status(400).json({ error: `PDF nelze stáhnout – objednávka je ve stavu ${client.order!.status}.` });
+    }
+
+    if (!client.analysis) {
+      return res.status(400).json({ error: 'Analýza nebyla nalezena. PDF nelze vygenerovat.' });
+    }
+
+    // Generate real PDF buffer
+    const pdfBuffer = await generateBusinessStartPdfBuffer(client);
+
+    // Update status to PDF_READY idempotently if not already updated
+    if (client.order!.status !== 'PDF_READY') {
+      client.order!.status = 'PDF_READY';
+      client.order!.pdfGeneratedAt = new Date().toISOString();
+      client.orderStatus = 'PDF_READY';
+      client.updatedAt = new Date().toISOString();
+      clients[idx] = client;
+      await writePersistedBusinessStartClients(clients);
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="podnikai-business-start.pdf"');
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.status(200).send(pdfBuffer);
+  } catch (err: any) {
+    console.error('Chyba při generování PDF:', err);
+    return res.status(500).json({ error: err.message || 'Chyba při generování PDF souboru' });
+  }
+};
+
+app.get('/api/business-start/order/:orderId/pdf', handleBusinessStartPdfDownload);
+app.post('/api/business-start/order/:orderId/pdf', handleBusinessStartPdfDownload);
 
 
 // Strict 404 JSON handler for unhandled API routes (never return HTML)

@@ -34,6 +34,7 @@ export const BusinessStartReportTab: React.FC<ReportTabProps> = ({ client }) => 
   const [copied, setCopied] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportError, setExportError] = useState<string>('');
+  const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string>('');
 
   const q = sanitizeAllStrings(client.questionnaire);
   const a = client.analysis ? sanitizeAllStrings(client.analysis) : null;
@@ -58,55 +59,67 @@ export const BusinessStartReportTab: React.FC<ReportTabProps> = ({ client }) => 
   };
 
   const handleDownloadPdf = async () => {
+    if (isExportingPdf) return;
     setIsExportingPdf(true);
     setExportError('');
+    setPdfSuccessMessage('');
+
     try {
-      const element = document.getElementById('podnikai-printable-report');
-      if (!element) {
-        throw new Error('Element reportu nebyl nalezen');
+      const orderId = client.order?.id || client.id;
+      const orderToken = client.order?.orderToken || client.orderToken;
+
+      if (!orderId) {
+        throw new Error('Identifikátor objednávky nebyl nalezen.');
       }
 
-      // Dynamically load html2pdf to ensure clean client-side execution
-      const html2pdfModule = await import('html2pdf.js');
-      const html2pdf = (html2pdfModule as any).default || html2pdfModule;
+      // Download real PDF buffer from server endpoint
+      const downloadUrl = `/api/business-start/order/${encodeURIComponent(orderId)}/pdf${orderToken ? `?token=${encodeURIComponent(orderToken)}` : ''}`;
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: orderToken ? { 'x-order-token': orderToken } : {}
+      });
 
-      const safeClientName = (q.clientName || 'Klient').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_');
-      const filename = `PODNIKAI_Business_Start_${safeClientName}.pdf`;
-
-      const opt = {
-        margin: [8, 8, 8, 8],
-        filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-          scale: 2, 
-          useCORS: true, 
-          logging: false,
-          letterRendering: true
-        },
-        jsPDF: { 
-          unit: 'mm', 
-          format: 'a4', 
-          orientation: 'portrait' 
-        },
-        pagebreak: { 
-          mode: ['avoid-all', 'css', 'legacy']
+      if (!response.ok) {
+        let errMessage = 'Nepodařilo se stáhnout PDF soubor.';
+        try {
+          const errData = await response.json();
+          if (errData.error) errMessage = errData.error;
+        } catch {
+          // ignore non-JSON response
         }
-      };
-
-      await html2pdf().set(opt).from(element).save();
-
-      // Notify server that PDF has been generated and downloaded
-      if (client.order?.id && client.order?.orderToken) {
-        markBusinessStartPdfReady(client.order.id, client.order.orderToken).catch(err => {
-          console.warn('Nepodařilo se aktualizovat stav PDF na serveru:', err);
-        });
+        throw new Error(errMessage);
       }
-    } catch (err: any) {
-      console.error('PDF export failed, falling back to window.print():', err);
-      setExportError('Generování PDF souboru narazilo na problém. Spouštím systémový tisk.');
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && !contentType.includes('application/pdf')) {
+        throw new Error('Server nevrátil platný PDF formát.');
+      }
+
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) {
+        throw new Error('Stažený PDF soubor je prázdný.');
+      }
+
+      // Clean native browser file download (tested for iOS Safari & Android & Desktop)
+      const blobUrl = window.URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = blobUrl;
+      downloadLink.download = 'podnikai-business-start.pdf';
+      downloadLink.style.display = 'none';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+
       setTimeout(() => {
-        window.print();
-      }, 500);
+        if (downloadLink.parentNode) {
+          downloadLink.parentNode.removeChild(downloadLink);
+        }
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
+
+      setPdfSuccessMessage('PDF připraveno ke stažení.');
+    } catch (err: any) {
+      console.error('Chyba při stahování PDF:', err);
+      setExportError(err.message || 'Nepodařilo se stáhnout PDF soubor. Zkontrolujte připojení a zkuste to znovu.');
     } finally {
       setIsExportingPdf(false);
     }
@@ -398,7 +411,7 @@ ${client.adminNotes ? `DOPORUČENÍ KONZULTANTA PODNIKAI:\n${client.adminNotes}`
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-200 transition-colors"
           >
             <Printer className="w-3.5 h-3.5" />
-            Tisk
+            Tisk / uložit přes tisk
           </button>
           <button
             type="button"
@@ -407,14 +420,28 @@ ${client.adminNotes ? `DOPORUČENÍ KONZULTANTA PODNIKAI:\n${client.adminNotes}`
             className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" />
-            {isExportingPdf ? 'Generuji PDF...' : 'Stáhnout PDF soubor'}
+            {isExportingPdf ? 'Generuji PDF…' : pdfSuccessMessage ? 'PDF připraveno ke stažení.' : 'Stáhnout PDF'}
           </button>
         </div>
       </div>
 
       {exportError && (
-        <div className="print:hidden bg-amber-950/60 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300">
-          {exportError}
+        <div className="print:hidden bg-rose-950/60 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-300 flex items-center justify-between gap-3">
+          <span>{exportError}</span>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-white text-[11px] font-bold underline shrink-0"
+          >
+            Opakovat
+          </button>
+        </div>
+      )}
+
+      {pdfSuccessMessage && (
+        <div className="print:hidden bg-emerald-950/60 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-300 flex items-center gap-2">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>PDF připraveno ke stažení.</span>
         </div>
       )}
 
