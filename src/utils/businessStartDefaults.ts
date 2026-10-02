@@ -516,10 +516,10 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
       }
     ];
 
-    blueprintUvp = 'Hloubková regenerační péče na míru s možností dojezdu nebo v klidném studiu, zaměřená na dlouhodobé odstranění svalových blokád a opakované návštěvy spokojených klientů.';
+    blueprintUvp = 'Hloubková regenerační péče na míru s možností dojezdu nebo v klidném studiu, zaměřená na uvolnění ztuhlosti, regeneraci a opakované návštěvy spokojených klientů.';
     blueprintIdealCustomer = 'Lidé se sedavým zaměstnáním, rekreační sportovci a lidé hledající regeneraci a uvolnění v dojezdovém okolí (stálá lokální klientela hledající spolehlivou regenerační péči).';
     blueprintCustomerProblem = 'Ztuhlost svalů ze sedavého zaměstnání a jednostranné zátěže, nedostatek času dojíždět do vzdálených salonů a neosobní přístup bez možnosti snadné rezervace.';
-    blueprintBuyingMotivation = 'Rychlá a citelná úleva od bolesti ztuhlých zad, profesionální lidský přístup, jednoduchá rezervace a pohodlná dostupnost termínu.';
+    blueprintBuyingMotivation = 'Rychlá a citelná úleva od ztuhlých zad a šíje, profesionální lidský přístup, jednoduchá rezervace a pohodlná dostupnost termínu.';
     blueprintWhereToFindThem = [
       'Stálá lokální klientela z firem a kanceláří v dojezdu (sedavá zaměstnání)',
       'Lokální sportovní a běžecké kluby a fitness centra',
@@ -532,8 +532,8 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
       'Doporučení 3 individuálních cviků pro udržení úlevy mezi masážemi a plán pro opakované návštěvy'
     ];
     blueprintPricingStrategy = 'Zaváděcí cena na první návštěvu pro odbourání obav, následně permanentky a balíčky 5 masáží s vyšší retencí pro opakované návštěvy.';
-    blueprintPrice = '[RECOMMENDATION / SCENARIO] Modelový cenový předpoklad: 800 – 1 200 Kč / 60 minut masáže (nebo balíček / permanentky na 5 masáží za 4 200 Kč)';
-    blueprintUpsellOption = 'Zvýhodněné permanentky na 5–10 masáží, dárkové poukazy a půldenní firemní dny zdraví v kancelářích (B2B masáže na židli).';
+    blueprintPrice = '[RECOMMENDATION / SCENARIO] Cenová struktura: 690 Kč zaváděcí akviziční cena na 1. návštěvu | 1 100 – 1 400 Kč standardní doporučené cenové rozpětí za 60 minut masáže (nebo zvýhodněná permanentka 5 masáží za 5 500 Kč) | 1 600 Kč případná prémiová/studiová varianta nebo 90min prodloužený upsell | Finanční model kalkuluje s konzervativní stress-test cenou 1 000 Kč pro vysokou odolnost';
+    blueprintUpsellOption = 'Zvýhodněné permanentky na 5–10 masáží, dárkové poukazy, prodloužená 90minutová varianta masáže (samostatný upsell) a půldenní firemní dny zdraví v kancelářích (B2B rekondiční masáže na židli).';
     blueprintSalesChannel = 'Lokální doporučení, Google Firemní profil pro vyhledávání, sousedské skupiny a spolupráce s lokálními fitness centry a běžeckými kluby';
     blueprintIcebreaker = 'Dobrý den, otevírám novou masérskou praxi v našem okolí se zaměřením na úlevu od ztuhlých zad a šíje. Pro prvních 10 zájemců nabízím zvýhodněnou zaváděcí 60minutovou masáž za 690 Kč. Rezervace termínu je možná obratem – mohu vám poslat volné termíny na tento týden?';
     blueprintSalesScript = [
@@ -598,17 +598,17 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
         tasks: [
           'Zpracovat přehled vytížení kapacity a kalkulaci spotřeby olejů a prádla',
           'Odeslat upomínku na opakovanou návštěvu prvním 4–6 klientům po 3–4 týdnech',
-          'Cíl modelu: stabilizace 8–10 masáží týdně v rámci časového fondu 25 h'
+          `Cíl modelu: stabilizace 8–10 masáží týdně v rámci zadaného časového fondu (${q.weeklyTimeCommitment})`
         ]
       }
     ];
-    blueprintAssumedPrice = 'Prodejní/modelová cena nabídky: 800 – 1 400 Kč za 60–90min regenerační masáž (nebo 1 100 – 1 600 Kč u vybaveného studia) | Konzervativní finanční stress-test: 1 000 Kč / návštěva (pro zajištění odolnosti kalkulace vůči zaváděcím cenám či slevám)';
+    blueprintAssumedPrice = 'Prodejní/modelová cena nabídky: 690 Kč zaváděcí akviziční cena na 1. návštěvu | 1 100 – 1 400 Kč standardní doporučené cenové rozpětí za 60 minut masáže (1 600 Kč případná prémiová/studiová varianta nebo 90min prodloužený upsell) | Konzervativní finanční stress-test: 1 000 Kč / návštěva (pro zajištění odolnosti kalkulace vůči zaváděcím cenám či slevám)';
     blueprintAssumedClients = '35–45 odbavených masáží měsíčně';
-    blueprintCapacityScenario = `Model kapacity: • Teoretická kapacita: 80–90 masáží měsíčně (čistý čas 60 minut bez pauz a úklidu) | • Realistická/provozní kapacita: 35–45 masáží měsíčně (zahrnuje masáž + cca 45 min rezervu na přípravu, dezinfekci, převlékání, praní prádla, rezervace a regeneraci maséra v rámci časové dotace ${q.weeklyTimeCommitment}) | • Doporučená udržitelná kapacita: 30–35 masáží měsíčně`;
+    blueprintCapacityScenario = `Model kapacity: • Teoretická kapacita: 80–90 masáží měsíčně (čistý čas 60 minut bez pauz a úklidu) | • Realistická/provozní kapacita: 35–45 masáží měsíčně (zahrnuje 60min masáž + cca 45 min rezervu na přípravu, dezinfekci, převlékání, praní prádla, rezervace a regeneraci maséra v rámci časové dotace ${q.weeklyTimeCommitment}) | • Doporučená udržitelná kapacita: 30–35 masáží měsíčně`;
     blueprintCapacityBreakdown = {
       theoreticalCapacity: '80–90 masáží měsíčně (čistý čas 60 minut na lehátku bez pauz a úklidu)',
-      operationalCapacity: `35–45 masáží měsíčně (zahrnuje přímou masáž + cca 45 min rezervu na přípravu místnosti, dezinfekci lehátka, převlékání, praní prádla, komunikaci a fyzickou regeneraci maséra = cca 70–90 h měsíčně v rámci fondu ${q.weeklyTimeCommitment})`,
-      recommendedCapacity: '30–35 masáží měsíčně (udržitelné bez rizika přetížení pohybového aparátu maséra)',
+      operationalCapacity: `35–45 masáží měsíčně (zahrnuje 60min přímou masáž + cca 45 min rezervu na přípravu místnosti, dezinfekci lehátka, převlékání, praní prádla, komunikaci a fyzickou regeneraci maséra v rámci fondu ${q.weeklyTimeCommitment})`,
+      recommendedCapacity: '30–35 masáží měsíčně (doporučená kapacita jako konzervativní provozní model s rezervou na přípravu, administrativu a regeneraci)',
       overheadBufferBreakdown: 'Rezerva na přípravu lehátka a aromaterapie, dezinfekci po každém klientovi, převlékání a konzultaci, praní a sušení prádla, objednávkový systém a regeneraci maséra.'
     };
     if (goalLower.includes('studio') || goalLower.includes('provozovn') || goalLower.includes('salon')) {
@@ -618,42 +618,40 @@ export function generateDeterministicBusinessStartAnalysis(q: BusinessStartQuest
         transitionCondition: 'Dosažení klientské základny 25–30 stálých platících klientů a akumulace finanční rezervy min. 40 000 – 50 000 Kč z provozních přebytků pro bezpečnou kauci a nájem vlastních prostor bez zadlužení'
       };
     }
-    blueprintOverheadCosts = isZeroBudget 
-      ? 'Předpoklad modelu: 0 Kč při využití bezplatných nástrojů a stávajícího vybavení (vlastní přenosné lehátko při mobilním servisu; neuvedeno / nezohledněno v tomto modelu: sociální a zdravotní pojištění, energie a daně)' 
-      : 'Předpoklad modelu: 1 100 Kč / měsíc (obnova hypoalergenních masážních emulzí, dezinfekce, hygiena a praní prádla; neuvedeno / nezohledněno v tomto modelu: odvody a daně)';
-    blueprintVariableCosts = 'Předpoklad modelu: 60 Kč / masáž (odhad spotřeby: masážní oleje, jednorázová prostěradla, praní prádla; neuvedeno / nezohledněno v tomto modelu: lokální dojezd)';
+    blueprintOverheadCosts = 'Předpoklad modelu: 0 Kč fixní provozní náklady měsíčně (při startu s mobilním dojezdem bez stálého nájmu studia; využity bezplatné nástroje a stávající vybavení; veškerý spotřební materiál je započten výhradně ve variabilních nákladech; neuvedeno / nezohledněno v tomto modelu: sociální a zdravotní pojištění a daň z příjmů)';
+    blueprintVariableCosts = 'Předpoklad modelu: 60 Kč / masáž (přímá spotřeba materiálu: masážní oleje a hypoalergenní emulze, jednorázové hygienické prostěradlo, dezinfekce a praní prádla – započteno výhradně jako variabilní náklad, bez duplicity ve fixních nákladech; neuvedeno / nezohledněno v tomto modelu: lokální dojezd)';
     blueprintBreakEven = formatStructuredBreakEven({
-      operationalOrders: '2 masáže',
-      operationalCostScope: 'odhadovaná měsíční režie na masážní hypoalergenní oleje, prádlo a dezinfekci cca 1 100 Kč / měsíc',
+      operationalOrders: '1 masáž (při nulových fixních nákladech přináší každá masáž provozní přebytek 940 Kč po odečtení 60 Kč přímých nákladů)',
+      operationalCostScope: 'přímé variabilní náklady na materiál 60 Kč / masáž (fixní provozní náklady 0 Kč při startu bez nájmu provozovny)',
       businessTargetNote: '35–45 masáží měsíčně dle cíle klienta'
     });
-    blueprintCostModel = isZeroBudget ? 'Konzervativní předpoklad: minimální fixní režie při mobilním dojezdu s vlastním lehátkem (nezahrnuje SP/ZP a daně)' : 'Minimální náklady na oleje a prádlo kryté z plateb';
-    blueprintRevenueModel = 'Přímá platba za jednotlivé masáže + permanentky a firemní dny (B2B fakturace)';
-    blueprintPessimistic = 'MODELOVÝ SCÉNÁŘ (konzervativní rozjezd 25–30 návštěv): 25 masáží × 1 000 Kč (konzervativní stress-test cena; prodejní cena nabídky 800 – 1 400 Kč) = 25 000 Kč tržba mínus 1 500 Kč variabilní náklady (25 × 60 Kč) mínus 1 100 Kč fixní provozní náklady = 22 400 Kč modelový provozní přebytek (orientační výsledek modelového scénáře v rozmezí 25–30 návštěv; nezohledňuje odvody SP/ZP ani daň z příjmů).';
-    blueprintRealistic = 'MODELOVÝ SCÉNÁŘ (realistická udržitelná kapacita 30–35 návštěv): při scénáři 35 masáží měsíčně (doporučená udržitelná kapacita plně v rámci fondu 25 h/týdně): 35 masáží × 1 000 Kč (konzervativní stress-test cena) = 35 000 Kč tržba mínus 2 100 Kč variabilní náklady (35 × 60 Kč) mínus 1 100 Kč fixní provozní náklady = 31 800 Kč modelový provozní přebytek (model kapacity v rámci doporučené udržitelné kapacity 30–35 návštěv; nezohledňuje SP/ZP ani daň z příjmů).';
-    blueprintOptimistic = 'MODELOVÝ SCÉNÁŘ (horní strop provozní kapacity 40–45 návštěv): 45 masáží × 1 000 Kč = 45 000 Kč tržba mínus 2 700 Kč variabilní náklady (45 × 60 Kč) mínus 1 100 Kč fixní provozní náklady = 41 200 Kč modelový provozní přebytek (horní strop provozní kapacity 35–45 návštěv měsíčně při plném vytížení; orientační výsledek modelového scénáře bez odvodů a daní).';
-    blueprintSimpleCalculation = 'MODELOVÝ VÝPOČET (realistický scénář v doporučené kapacitě 30–35 masáží): 35 masáží × 1 000 Kč = 35 000 Kč tržba mínus 2 100 Kč variabilní náklady (35 × 60 Kč) mínus 1 100 Kč fixní provozní náklady = 31 800 Kč modelový provozní přebytek (nezahrnuje odvody SP/ZP ani daň z příjmů).';
+    blueprintCostModel = 'Konzervativní předpoklad: nulové fixní provozní náklady při startu bez nájmu studia (veškerá spotřeba olejů, dezinfekce a prádla je započtena výhradně v 60 Kč/masáž jako variabilní náklad; nezahrnuje SP/ZP a daně)';
+    blueprintRevenueModel = 'Přímá platba za jednotlivé 60min masáže + permanentky a firemní dny (B2B fakturace)';
+    blueprintPessimistic = `MODELOVÝ SCÉNÁŘ (konzervativní rozjezd 25–30 návštěv): 25 masáží × 1 000 Kč (konzervativní stress-test cena; standardní prodejní cena 1 100 – 1 400 Kč za 60 minut) = 25 000 Kč tržba mínus 1 500 Kč variabilní náklady (25 × 60 Kč za spotřebovaný materiál a hygienu) mínus 0 Kč fixní provozní náklady (start bez stálého nájmu studia) = 23 500 Kč modelový provozní přebytek (orientační výsledek modelového scénáře v rozmezí 25–30 návštěv; nezohledňuje odvody SP/ZP ani daň z příjmů).`;
+    blueprintRealistic = `MODELOVÝ SCÉNÁŘ (realistická udržitelná kapacita 30–35 návštěv): při scénáři 35 masáží měsíčně (doporučená udržitelná kapacita plně v rámci zadané časové dotace ${q.weeklyTimeCommitment}): 35 masáží × 1 000 Kč (konzervativní stress-test cena) = 35 000 Kč tržba mínus 2 100 Kč variabilní náklady (35 × 60 Kč) mínus 0 Kč fixní provozní náklady = 32 900 Kč modelový provozní přebytek (model kapacity v rámci doporučené udržitelné kapacity 30–35 návštěv; nezohledňuje SP/ZP ani daň z příjmů).`;
+    blueprintOptimistic = `MODELOVÝ SCÉNÁŘ (horní strop provozní kapacity 40–45 návštěv): 45 masáží × 1 000 Kč = 45 000 Kč tržba mínus 2 700 Kč variabilní náklady (45 × 60 Kč) mínus 0 Kč fixní provozní náklady = 42 300 Kč modelový provozní přebytek (horní strop provozní kapacity 35–45 návštěv měsíčně při plném vytížení v rámci časové dotace ${q.weeklyTimeCommitment}; orientační výsledek modelového scénáře bez odvodů a daní).`;
+    blueprintSimpleCalculation = `MODELOVÝ VÝPOČET (realistický scénář v doporučené kapacitě 30–35 masáží): 35 masáží × 1 000 Kč = 35 000 Kč tržba mínus 2 100 Kč variabilní náklady (35 × 60 Kč) mínus 0 Kč fixní provozní náklady = 32 900 Kč modelový provozní přebytek (nezahrnuje odvody SP/ZP ani daň z příjmů).`;
     blueprintNotIncluded = 'neuvedeno / nezohledněno v tomto modelu: zákonné odvody sociálního a zdravotního pojištění, daň z příjmů, opotřebení lehátka a doprava ke klientům.';
 
     const targetIncomeNumMatch = (q.targetMonthlyIncome || '').replace(/\s+/g, '').match(/(\d+)/);
     const targetIncomeVal = targetIncomeNumMatch ? parseInt(targetIncomeNumMatch[1], 10) : 0;
-    const isTargetDeficit = targetIncomeVal > 31800;
+    const isTargetDeficit = targetIncomeVal > 32900;
 
     const masseurTargetComparison = [
       `  - Cílový příjem zadaný klientem: ${q.targetMonthlyIncome}`,
       `  - Tržby modelu (realistický scénář 35 návštěv): 35 000 Kč (při stropu kapacity 45 návštěv: 45 000 Kč)`,
-      `  - Modelový provozní přebytek (po odečtení materiálu a fixní režie): 31 800 Kč měsíčně (při stropu kapacity: 41 200 Kč)`,
+      `  - Modelový provozní přebytek (po odečtení materiálu 60 Kč/masáž při 0 Kč fixních nákladech): 32 900 Kč měsíčně (při stropu kapacity: 42 300 Kč)`,
       `  - Čistý příjem podnikatele: čistý zisk po zdanění a zákonných odvodech SP/ZP (hrubý provozní model odvody nezahrnuje).`,
       isTargetDeficit
-        ? `  ⚠️ DŮLEŽITÉ UPOZORNĚNÍ: Při konzervativních modelových předpokladech (stress-test cena 1 000 Kč / návštěva a zadaná časová dotace 25 h/týdně) tento scénář nedosahuje zadaného cíle (${q.targetMonthlyIncome}). K dosažení cíle je nutná změna ceny, kapacity, nabídky nebo dalšího příjmového kanálu.`
+        ? `  ⚠️ DŮLEŽITÉ UPOZORNĚNÍ: Při konzervativních modelových předpokladech (stress-test cena 1 000 Kč / návštěva a zadaná časová dotace ${q.weeklyTimeCommitment}) tento scénář nedosahuje zadaného cíle (${q.targetMonthlyIncome}). K dosažení cíle je nutná změna ceny, kapacity, nabídky nebo dalšího příjmového kanálu.`
         : `  Modelový provozní přebytek odpovídá zadanému cíli v rámci doporučené kapacity.`
     ].join('\n');
 
     const masseurHowToReachTarget = isTargetDeficit ? [
-      'Vyšší průměrná cena procedur: posun z konzervativního stress-testu 1 000 Kč na plnou nabídkovou cenu 1 300 – 1 600 Kč za 75–90min prémiové procedury (např. 35 návštěv × 1 450 Kč = tržba 50 750 Kč, provozní přebytek cca 47 500 Kč).',
-      'Vyšší hodnota balíčků a permanentek: aktivní prodej klientských balíčků 5–10 masáží s vyšší retencí a dárkových poukazů.',
+      'Vyšší průměrná cena procedur: posun z konzervativního stress-testu 1 000 Kč na standardní doporučené rozpětí 1 100 – 1 400 Kč za 60min péči nebo 1 600 Kč za prémiovou studiovou proceduru / 90min samostatný upsell (např. 35 návštěv × 1 350 Kč = tržba 47 250 Kč, provozní přebytek cca 45 150 Kč).',
+      'Vyšší hodnota balíčků a permanentek: aktivní prodej klientských balíčků 5 masáží s vyšší retencí a dárkových poukazů.',
       'Firemní a B2B služby: zařazení firemních dnů zdraví v kancelářích na ergonomické židli (2 půldenní firemní akce měsíčně = modelový výnos 12 000 – 18 000 Kč navíc).',
-      'Kombinace služeb a doplňkový prodej: prodej masážních emulzí, doplňků pro regeneraci a ergonomického poradenství.',
+      'Kombinace služeb a doplňkový prodej: prodej regeneračních emulzí, doplňků pro regeneraci a ergonomického poradenství.',
       'Rozšíření časové kapacity nebo rozvoj vlastního studia s vyšší marží a prémiovým komfortem.'
     ] : undefined;
 
