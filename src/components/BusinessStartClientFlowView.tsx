@@ -431,7 +431,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
             <div className="text-center max-w-3xl mx-auto space-y-4">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Oficiální služba PODNIKAI Business Start • 1 990 Kč vč. DPH</span>
+                <span>Oficiální služba PODNIKAI Business Start • 1 990 Kč</span>
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-heading font-black tracking-tight text-white leading-tight">
                 Váš ucelený byznys plán a strategie pro <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-300">rozjezd podnikání v ČR</span>
@@ -603,7 +603,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 <Clock className="w-4 h-4 text-emerald-400" /> Okamžité zpracování po úhradě
               </span>
               <span className="flex items-center gap-1.5">
-                <Award className="w-4 h-4 text-purple-400" /> 100% garance zohlednění vašich limitů
+                <Award className="w-4 h-4 text-purple-400" /> Vaše limity a preference jsou součástí analýzy
               </span>
             </div>
           </div>
