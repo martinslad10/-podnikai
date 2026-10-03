@@ -80,31 +80,25 @@ export const BusinessStartReportTab: React.FC<ReportTabProps> = ({ client }) => 
       });
 
       if (!response.ok) {
-        let errMessage = 'Nepodařilo se stáhnout PDF soubor.';
-        try {
-          const errData = await response.json();
-          if (errData.error) errMessage = errData.error;
-        } catch {
-          // ignore non-JSON response
-        }
-        throw new Error(errMessage);
+        throw new Error('PDF se nepodařilo stáhnout. Zkuste to znovu.');
       }
 
       const contentType = response.headers.get('content-type');
       if (contentType && !contentType.includes('application/pdf')) {
-        throw new Error('Server nevrátil platný PDF formát.');
+        throw new Error('PDF se nepodařilo stáhnout. Zkuste to znovu.');
       }
 
       const blob = await response.blob();
       if (!blob || blob.size === 0) {
-        throw new Error('Stažený PDF soubor je prázdný.');
+        throw new Error('PDF se nepodařilo stáhnout. Zkuste to znovu.');
       }
 
-      // Clean native browser file download (tested for iOS Safari & Android & Desktop)
-      const blobUrl = window.URL.createObjectURL(blob);
+      // Robust download flow: Blob URL -> <a> with download="PODNIKAI_Report.pdf" -> click -> revokeObjectURL
+      const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+      const blobUrl = window.URL.createObjectURL(pdfBlob);
       const downloadLink = document.createElement('a');
       downloadLink.href = blobUrl;
-      downloadLink.download = 'podnikai-business-start.pdf';
+      downloadLink.download = 'PODNIKAI_Report.pdf';
       downloadLink.style.display = 'none';
       document.body.appendChild(downloadLink);
       downloadLink.click();
@@ -114,12 +108,13 @@ export const BusinessStartReportTab: React.FC<ReportTabProps> = ({ client }) => 
           downloadLink.parentNode.removeChild(downloadLink);
         }
         window.URL.revokeObjectURL(blobUrl);
-      }, 1000);
+      }, 2000);
 
       setPdfSuccessMessage('PDF připraveno ke stažení.');
     } catch (err: any) {
       console.error('Chyba při stahování PDF:', err);
-      setExportError(err.message || 'Nepodařilo se stáhnout PDF soubor. Zkontrolujte připojení a zkuste to znovu.');
+      // Žádný tiskový fallback! Pouze zobrazit chybu a tlačítko Opakovat
+      setExportError('PDF se nepodařilo stáhnout. Zkuste to znovu.');
     } finally {
       setIsExportingPdf(false);
     }
@@ -420,7 +415,7 @@ ${client.adminNotes ? `DOPORUČENÍ KONZULTANTA PODNIKAI:\n${client.adminNotes}`
             className="flex items-center gap-2 px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" />
-            {isExportingPdf ? 'Generuji PDF…' : pdfSuccessMessage ? 'PDF připraveno ke stažení.' : 'Stáhnout PDF'}
+            {isExportingPdf ? 'Generuji PDF…' : pdfSuccessMessage ? 'PDF připraveno ke stažení.' : 'Stáhnout PDF soubor'}
           </button>
         </div>
       </div>
@@ -428,20 +423,44 @@ ${client.adminNotes ? `DOPORUČENÍ KONZULTANTA PODNIKAI:\n${client.adminNotes}`
       {exportError && (
         <div className="print:hidden bg-rose-950/60 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-300 flex items-center justify-between gap-3">
           <span>{exportError}</span>
-          <button
-            type="button"
-            onClick={handleDownloadPdf}
-            className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-white text-[11px] font-bold underline shrink-0"
-          >
-            Opakovat
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {client.order?.id && (
+              <a
+                href={`/api/business-start/order/${encodeURIComponent(client.order.id)}/pdf?token=${encodeURIComponent(client.order.orderToken || client.orderToken || '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] font-medium"
+              >
+                Otevřít přímo
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-white text-[11px] font-bold underline shrink-0"
+            >
+              Opakovat
+            </button>
+          </div>
         </div>
       )}
 
       {pdfSuccessMessage && (
-        <div className="print:hidden bg-emerald-950/60 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-300 flex items-center gap-2">
-          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>PDF připraveno ke stažení.</span>
+        <div className="print:hidden bg-emerald-950/60 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-300 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>PDF připraveno ke stažení.</span>
+          </div>
+          {client.order?.id && (
+            <a
+              href={`/api/business-start/order/${encodeURIComponent(client.order.id)}/pdf?token=${encodeURIComponent(client.order.orderToken || client.orderToken || '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-emerald-200 hover:text-white underline shrink-0 font-medium"
+            >
+              Otevřít PDF přímo
+            </a>
+          )}
         </div>
       )}
 
