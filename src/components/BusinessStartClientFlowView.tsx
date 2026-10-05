@@ -35,6 +35,14 @@ import {
   markBusinessStartPdfReady
 } from '../services/api';
 import { BusinessStartReportTab } from './admin/BusinessStartReportTab';
+import { 
+  trackQuestionnaireStart, 
+  trackQuestionnaireComplete, 
+  trackCheckoutStart, 
+  trackPurchase, 
+  trackReportReady, 
+  resetQuestionnaireStartState 
+} from '../utils/analytics';
 
 interface BusinessStartClientFlowViewProps {
   onBackToHome?: () => void;
@@ -116,6 +124,13 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
     }
   }, [order?.status]);
 
+  // Track questionnaire start when user begins intake (12 questions)
+  useEffect(() => {
+    if (currentStep === 'intake') {
+      trackQuestionnaireStart();
+    }
+  }, [currentStep]);
+
   const loadOrder = async (orderId: string, orderToken: string, showLoader: boolean = true) => {
     if (showLoader) setIsLoading(true);
     setError('');
@@ -138,8 +153,16 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
           });
         }
 
+        // Server-confirmed purchase tracking (CRITICAL: Only if server confirmed PAID!)
+        if (res.isPaid || res.order.paymentStatus === 'PAID') {
+          trackPurchase(res.order.id, 1990, 'CZK');
+        }
+
         // Map order status to UI step
         if (res.order.status === 'REPORT_READY' || res.order.status === 'PDF_READY') {
+          if (res.analysis) {
+            trackReportReady(res.order.id);
+          }
           setCurrentStep('report');
         } else if (res.order.status === 'ANALYZING') {
           setCurrentStep('analyzing');
@@ -165,6 +188,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
   };
 
   const handleStartFresh = () => {
+    resetQuestionnaireStartState();
     localStorage.removeItem('podnikai_client_bs_order');
     setSavedSessionNotice(null);
     setOrder(null);
@@ -227,6 +251,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
           orderId: res.order.id,
           orderToken: res.order.orderToken
         }));
+        trackQuestionnaireComplete();
         setCurrentStep('summary');
       } else {
         setError(res.error || 'Příprava objednávky selhala');
@@ -241,6 +266,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
   const handleProceedToPayment = async () => {
     if (!order || !order.id || !order.orderToken) return;
 
+    trackCheckoutStart();
     setIsLoading(true);
     setError('');
     try {

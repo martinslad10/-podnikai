@@ -25,6 +25,7 @@ import {
 import { BusinessStartClient } from '../../types';
 import { sanitizeReportText, sanitizeAllStrings, FormattedReportText } from '../../utils/textFormatters';
 import { markBusinessStartPdfReady } from '../../services/api';
+import { trackPdfDownload } from '../../utils/analytics';
 
 interface ReportTabProps {
   client: BusinessStartClient;
@@ -102,6 +103,9 @@ export const BusinessStartReportTab: React.FC<ReportTabProps> = ({ client }) => 
       downloadLink.style.display = 'none';
       document.body.appendChild(downloadLink);
       downloadLink.click();
+
+      // Track successful PDF download in Google Analytics 4
+      trackPdfDownload(orderId);
 
       setTimeout(() => {
         if (downloadLink.parentNode) {

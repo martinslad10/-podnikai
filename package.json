@@ -7,7 +7,7 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "test": "tsx scripts/test-temporal-consistency.ts && tsx scripts/test-business-start-hard-filter.ts && tsx scripts/test-business-start-e2e-qa.ts && tsx scripts/test-business-start-financial-qa.ts && tsx scripts/test-business-start-quality-qa.ts",
+    "test": "tsx scripts/test-temporal-consistency.ts && tsx scripts/test-business-start-hard-filter.ts && tsx scripts/test-business-start-e2e-qa.ts && tsx scripts/test-business-start-financial-qa.ts && tsx scripts/test-business-start-quality-qa.ts && tsx scripts/test-analytics-events.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

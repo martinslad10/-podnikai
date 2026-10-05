@@ -21,6 +21,7 @@ import { BusinessDirection, BusinessIdea, BusinessPlan, DailyStep, PotentialCust
 import { generateNextDailyStep, fetchSavedLeads, saveLeadsToServer } from './services/api';
 import { createActivityEntry, normalizeLeadStatusSeparation } from './utils/leadActivities';
 import { mergeLeadsWithExisting } from './utils/leadMerge';
+import { trackPageView } from './utils/analytics';
 
 const STORAGE_KEY_PROFILE = 'podnikai_user_profile';
 const STORAGE_KEY_PROJECT = 'podnikai_current_project';
@@ -66,8 +67,10 @@ export default function App() {
   const [currentRoute, setCurrentRoute] = useState<'business-start' | 'admin' | 'dev-preview'>(getAppRoute);
 
   useEffect(() => {
+    trackPageView();
     const handleRouteChange = () => {
       setCurrentRoute(getAppRoute());
+      trackPageView();
     };
     window.addEventListener('hashchange', handleRouteChange);
     window.addEventListener('popstate', handleRouteChange);
