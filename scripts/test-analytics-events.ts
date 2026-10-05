@@ -130,22 +130,22 @@ async function runAnalyticsTests() {
   trackCheckoutStart();
   const checkoutEvent = getLastEvent('checkout_start');
   assert(checkoutEvent, 'checkout_start event recorded');
-  assert.strictEqual(checkoutEvent[2].value, 1990, 'Checkout value is 1 990 Kč');
+  assert.strictEqual(checkoutEvent[2].value, 690, 'Checkout value is 690 Kč');
   assert.strictEqual(checkoutEvent[2].currency, 'CZK', 'Currency is CZK');
-  console.log('  ✅ PASS: checkout_start tracked with value: 1 990 CZK');
+  console.log('  ✅ PASS: checkout_start tracked with value: 690 CZK');
 
   // TEST 6: purchase Event (Server-Confirmed Only)
   console.log('\n[TEST 6: Server-Confirmed purchase Event]');
   const testOrderId = 'order-bs-test-999';
-  const tracked1 = trackPurchase(testOrderId, 1990, 'CZK');
+  const tracked1 = trackPurchase(testOrderId, 690, 'CZK');
   assert.strictEqual(tracked1, true, 'First purchase tracking succeeded');
 
   const purchaseEvent = getLastEvent('purchase');
   assert(purchaseEvent, 'purchase event recorded');
   assert.strictEqual(purchaseEvent[2].transaction_id, testOrderId, 'transaction_id matches orderId');
-  assert.strictEqual(purchaseEvent[2].value, 1990, 'Purchase value is 1 990 Kč');
+  assert.strictEqual(purchaseEvent[2].value, 690, 'Purchase value is 690 Kč');
   assert.strictEqual(purchaseEvent[2].currency, 'CZK', 'Currency is CZK');
-  assert.strictEqual(purchaseEvent[2].items[0].price, 1990, 'Item price is 1 990 Kč');
+  assert.strictEqual(purchaseEvent[2].items[0].price, 690, 'Item price is 690 Kč');
   assert.strictEqual(purchaseEvent[2].items[0].quantity, 1, 'Quantity is 1');
 
   // Strict Privacy: Verify no orderToken or user email in purchase payload
@@ -155,7 +155,7 @@ async function runAnalyticsTests() {
 
   // Verification of Anti-Duplication (e.g. from polling in loadOrder)
   const purchaseCountBefore = countEvents('purchase');
-  const tracked2 = trackPurchase(testOrderId, 1990, 'CZK');
+  const tracked2 = trackPurchase(testOrderId, 690, 'CZK');
   assert.strictEqual(tracked2, false, 'Second purchase tracking for same order was prevented');
   const purchaseCountAfter = countEvents('purchase');
   assert.strictEqual(purchaseCountBefore, purchaseCountAfter, 'Duplicate polling does NOT fire duplicate purchase events');

@@ -109,11 +109,11 @@ export function trackQuestionnaireComplete(): void {
  * 4. checkout_start
  * Fired when the user proceeds to payment
  */
-export function trackCheckoutStart(): void {
+export function trackCheckoutStart(value: number = 690): void {
   sendGtag('event', 'checkout_start', {
     event_category: 'business_start',
     currency: 'CZK',
-    value: 1990
+    value: value
   });
 }
 
@@ -123,7 +123,7 @@ export function trackCheckoutStart(): void {
  * NEVER triggered solely on frontend button clicks.
  * Strictly no PII, answers, or tokens.
  */
-export function trackPurchase(orderId: string, value: number = 1990, currency: string = 'CZK'): boolean {
+export function trackPurchase(orderId: string, value: number = 690, currency: string = 'CZK'): boolean {
   if (!orderId) return false;
   if (typeof window !== 'undefined') {
     const key = `podnikai_ga_purchased_${orderId}`;

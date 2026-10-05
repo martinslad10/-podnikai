@@ -64,10 +64,14 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onStart, onOpenAdmin, 
             <button
               id="btn-landing-business-start"
               onClick={onStartBusinessStart}
-              className="group relative inline-flex items-center justify-center gap-2.5 px-6 py-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-white font-bold text-base border border-emerald-500/30 hover:border-emerald-500/50 shadow-xl shadow-emerald-500/10 transition-all duration-200"
+              className="group relative inline-flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-white font-bold text-base border border-emerald-500/30 hover:border-emerald-500/50 shadow-xl shadow-emerald-500/10 transition-all duration-200"
             >
               <Sparkles className="w-5 h-5 text-emerald-400" />
-              <span>Business Start (1 990 Kč)</span>
+              <span>Business Start</span>
+              <span className="line-through text-slate-400 font-normal text-xs ml-1">1 990 Kč</span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold text-xs border border-emerald-500/40">
+                690 Kč
+              </span>
             </button>
           )}
         </div>

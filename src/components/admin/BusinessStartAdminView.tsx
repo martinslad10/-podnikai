@@ -313,7 +313,7 @@ export const BusinessStartAdminView: React.FC = () => {
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                   }`}>
-                    {selectedClient.order.paymentStatus === 'PAID' ? '✓ PAID 1 990 Kč' : '⏳ NEZAPLACENO'}
+                    {selectedClient.order.paymentStatus === 'PAID' ? `✓ PAID ${selectedClient.order.priceCz || 690} Kč` : '⏳ NEZAPLACENO'}
                   </span>
                 )}
                 {selectedClient.order?.status && (
@@ -644,7 +644,7 @@ export const BusinessStartAdminView: React.FC = () => {
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                           : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                       }`}>
-                        {c.order.paymentStatus === 'PAID' ? '✓ PAID 1 990 Kč' : '⏳ NEZAPLACENO'}
+                        {c.order.paymentStatus === 'PAID' ? `✓ PAID ${c.order.priceCz || 690} Kč` : '⏳ NEZAPLACENO'}
                       </span>
                     )}
 

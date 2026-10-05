@@ -1,10 +1,11 @@
 import assert from 'assert';
+import crypto from 'crypto';
 
 const BASE_URL = 'http://localhost:3000';
 
 async function runTests() {
   console.log('================================================================');
-  console.log('TESTING AUTOMATED PAID BUSINESS START FLOW (1 990 KČ)');
+  console.log('TESTING AUTOMATED PAID BUSINESS START FLOW (690 KČ)');
   console.log('================================================================');
 
   // STEP 1: Create a Draft Order (12 Questions Intake)
@@ -38,7 +39,9 @@ async function runTests() {
   assert(draftData.success === true, 'Draft creation succeeded');
   assert(draftData.orderId, 'Order ID generated');
   assert(draftData.orderToken, 'Security orderToken generated');
-  assert.strictEqual(draftData.order.priceCz, 1990, 'Order price is strictly 1 990 Kč');
+  assert.strictEqual(draftData.order.priceCz, 690, 'Order price is strictly 690 Kč');
+  assert.strictEqual(draftData.order.originalPriceCz, 1990, 'Original price is 1 990 Kč');
+  assert.strictEqual(draftData.order.discountPercent, 65, 'Discount percent is 65%');
   assert.strictEqual(draftData.order.currency, 'CZK', 'Currency is strictly CZK');
   assert.strictEqual(draftData.order.status, 'READY_FOR_PAYMENT', 'Status is READY_FOR_PAYMENT');
   assert.strictEqual(draftData.order.paymentStatus, 'UNPAID', 'Payment status is UNPAID');
@@ -89,7 +92,13 @@ async function runTests() {
   const checkoutData = await checkoutRes.json();
   assert(checkoutData.success === true, 'Checkout initiation succeeded');
   assert(checkoutData.mode === 'sandbox' || checkoutData.mode === 'stripe_hosted', 'Mode is valid checkout mode');
-  console.log(`  ✅ PASS: Checkout initialized in mode: ${checkoutData.mode}`);
+  if (checkoutData.mode === 'sandbox') {
+    assert.strictEqual(checkoutData.priceCz, 690, 'Checkout price is strictly 690 Kč');
+    assert.strictEqual(checkoutData.originalPriceCz, 1990, 'Checkout original price is 1 990 Kč');
+    assert.strictEqual(checkoutData.discountPercent, 65, 'Checkout discount is 65%');
+    assert.strictEqual(checkoutData.currency, 'CZK', 'Checkout currency is CZK');
+  }
+  console.log(`  ✅ PASS: Checkout initialized in mode: ${checkoutData.mode} (Price: 690 CZK, Discount: 65%)`);
 
   // STEP 4: Webhook Security & Idempotency Testing
   console.log('\n[STEP 4: Webhook Signature, Amount & Currency Validation]');
@@ -97,10 +106,51 @@ async function runTests() {
   const unsignedWebhookRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orderId, amount: 1990, currency: 'CZK' })
+    body: JSON.stringify({ orderId, amount: 690, currency: 'CZK' })
   });
   assert.strictEqual(unsignedWebhookRes.status, 400, 'Unsigned webhook rejected with 400');
   console.log('  ✅ PASS: Unsigned webhook rejected with 400');
+
+  // 4b: Correctly signed webhook but with INCORRECT amount (e.g. old 1990 Kč instead of 690 Kč) rejected
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.ADMIN_SESSION_SECRET || 'podnikai_secure_webhook_secret_2026';
+  const wrongAmountPayload = JSON.stringify({
+    event: 'payment.succeeded',
+    orderId,
+    amount: 1990, // Wrong amount! Expecting 690
+    currency: 'CZK'
+  });
+  const wrongHmac = crypto.createHmac('sha256', webhookSecret).update(wrongAmountPayload).digest('hex');
+  const wrongAmountRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-podnikai-signature': wrongHmac
+    },
+    body: wrongAmountPayload
+  });
+  assert.strictEqual(wrongAmountRes.status, 400, 'Webhook with incorrect amount (1990 vs 690) rejected with 400');
+  const wrongAmountData = await wrongAmountRes.json();
+  assert(wrongAmountData.error.includes('690'), 'Error indicates expected amount is 690 Kč');
+  console.log('  ✅ PASS: Server strictly rejected webhook with incorrect amount (1990 vs 690 Kč)');
+
+  // 4c: Correctly signed webhook but with INCORRECT currency (e.g. USD instead of CZK) rejected
+  const wrongCurrencyPayload = JSON.stringify({
+    event: 'payment.succeeded',
+    orderId,
+    amount: 690,
+    currency: 'USD'
+  });
+  const wrongCurrHmac = crypto.createHmac('sha256', webhookSecret).update(wrongCurrencyPayload).digest('hex');
+  const wrongCurrencyRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-podnikai-signature': wrongCurrHmac
+    },
+    body: wrongCurrencyPayload
+  });
+  assert.strictEqual(wrongCurrencyRes.status, 400, 'Webhook with incorrect currency rejected with 400');
+  console.log('  ✅ PASS: Server strictly rejected webhook with incorrect currency (USD vs CZK)');
 
   // STEP 5: Server-Side Verified Payment Simulation
   console.log('\n[STEP 5: Server-Side Verified Payment Simulation]');

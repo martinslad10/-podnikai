@@ -36,6 +36,12 @@ import {
 } from '../services/api';
 import { BusinessStartReportTab } from './admin/BusinessStartReportTab';
 import { 
+  BUSINESS_START_PRICE_CZK, 
+  BUSINESS_START_ORIGINAL_PRICE_CZK, 
+  BUSINESS_START_DISCOUNT_PERCENT, 
+  BUSINESS_START_SAVINGS_CZK 
+} from '../utils/businessStartPricing';
+import { 
   trackQuestionnaireStart, 
   trackQuestionnaireComplete, 
   trackCheckoutStart, 
@@ -155,7 +161,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
 
         // Server-confirmed purchase tracking (CRITICAL: Only if server confirmed PAID!)
         if (res.isPaid || res.order.paymentStatus === 'PAID') {
-          trackPurchase(res.order.id, 1990, 'CZK');
+          trackPurchase(res.order.id, res.order.priceCz || BUSINESS_START_PRICE_CZK, 'CZK');
         }
 
         // Map order status to UI step
@@ -369,7 +375,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                12 otázek zdarma • Komplexní analýza a PDF: 1 990 Kč
+                12 otázek zdarma • Komplexní analýza a PDF: <strong className="text-emerald-400 font-bold">690 Kč</strong> <span className="line-through text-slate-500">1 990 Kč</span>
               </p>
             </div>
           </div>
@@ -399,7 +405,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
             <span className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
               currentStep === 'summary' || currentStep === 'payment' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 bg-white/5'
             }`}>
-              3. Platba (1 990 Kč)
+              3. Platba (690 Kč)
             </span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
             <span className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
@@ -455,16 +461,38 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
           <div className="space-y-10 py-4">
             {/* Hero Section */}
             <div className="text-center max-w-3xl mx-auto space-y-4">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Oficiální služba PODNIKAI Business Start • 1 990 Kč</span>
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs font-semibold">
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <span className="text-slate-300">Oficiální služba PODNIKAI Business Start</span>
+                <span className="text-slate-500 line-through text-[11px]">1 990 Kč</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold text-[11px] border border-emerald-500/40">
+                  🔥 Startovací sleva 65 %: 690 Kč
+                </span>
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-heading font-black tracking-tight text-white leading-tight">
                 Váš ucelený byznys plán a strategie pro <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-300">rozjezd podnikání v ČR</span>
               </h1>
               <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
-                Žádné obecné motivační fráze. Vyplňte 12 cílených otázek zdarma. Náš analytický systém striktně zmapuje vaše dovednosti, časovou kapacitu, rozpočet a červené linie a po bezpečné platbě 1 990 Kč vygeneruje ucelený akční plán, finanční rozvahu a profesionální PDF ke stažení.
+                Žádné obecné motivační fráze. Vyplňte 12 cílených otázek zdarma. Náš analytický systém striktně zmapuje vaše dovednosti, časovou kapacitu, rozpočet a červené linie a po bezpečné platbě vygeneruje ucelený akční plán, finanční rozvahu a profesionální PDF ke stažení.
               </p>
+
+              {/* Pricing Display Box */}
+              <div className="max-w-md mx-auto p-4 rounded-2xl bg-[#090D1A] border border-emerald-500/30 shadow-xl text-center space-y-1.5">
+                <div className="text-xs uppercase tracking-wider font-bold text-slate-300">Business Start</div>
+                <div className="flex items-center justify-center gap-2 text-xs">
+                  <span className="text-slate-400">Původní cena:</span>
+                  <span className="text-slate-500 line-through font-medium">1 990 Kč</span>
+                </div>
+                <div>
+                  <span className="inline-block px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-extrabold">
+                    🔥 Startovací sleva 65 % (–1 300 Kč)
+                  </span>
+                </div>
+                <div className="pt-1">
+                  <span className="text-3xl sm:text-4xl font-heading font-black text-white">690 Kč</span>
+                  <span className="text-xs text-slate-400 ml-2">jednorázově</span>
+                </div>
+              </div>
 
               {/* Action Buttons */}
               <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -524,7 +552,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 )}
               </div>
               <p className="text-[11px] text-slate-500">
-                Vyplnění 12 otázek je 100% nezávazné. Platba 1 990 Kč probíhá až po dokončení a kontrole rekapitulace.
+                Vyplnění 12 otázek je 100% nezávazné. Platba 690 Kč probíhá až po dokončení a kontrole rekapitulace.
               </p>
             </div>
 
@@ -588,7 +616,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider block">Krok 2</span>
                   <h4 className="text-xs font-bold text-white">Kontrola a rekapitulace</h4>
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Zkontrolujete své odpovědi a potvrdíte spuštění objednávky (1 990 Kč).
+                    Zkontrolujete své odpovědi a potvrdíte spuštění objednávky (690 Kč).
                   </p>
                 </div>
                 <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-2">
@@ -941,7 +969,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   disabled={isLoading}
                   className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2"
                 >
-                  <span>Přejít k objednávce (1 990 Kč)</span>
+                  <span>Přejít k objednávce (690 Kč)</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -949,7 +977,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
           </div>
         )}
 
-        {/* STEP 2: ORDER SUMMARY & PRODUCT OFFER (1 990 KČ) */}
+        {/* STEP 2: ORDER SUMMARY & PRODUCT OFFER (690 KČ) */}
         {currentStep === 'summary' && (
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="text-center space-y-2">
@@ -965,12 +993,21 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
             </div>
 
             <div className="p-6 rounded-2xl bg-[#090D1A] border border-blue-500/30 shadow-2xl space-y-6">
-              <div className="flex items-baseline justify-between border-b border-white/10 pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
                 <div>
-                  <span className="text-xs text-slate-400 block">Jednorázová cena balíčku:</span>
-                  <span className="text-3xl font-heading font-black text-white">1 990 Kč</span>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs text-slate-400">Původní cena:</span>
+                    <span className="text-xs text-slate-500 line-through">1 990 Kč</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      🔥 Startovací sleva 65 % (–1 300 Kč)
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-heading font-black text-white">690 Kč</span>
+                    <span className="text-xs text-slate-400">jednorázově včetně kompletního PDF reportu</span>
+                  </div>
                 </div>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 self-start sm:self-center">
                   Okamžité automatické zpracování
                 </span>
               </div>
@@ -1048,7 +1085,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   className="w-full sm:w-auto px-7 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-sm transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2"
                 >
                   <CreditCard className="w-4 h-4" />
-                  <span>Pokračovat k platbě 1 990 Kč</span>
+                  <span>Pokračovat k platbě 690 Kč</span>
                 </button>
               </div>
             </div>
@@ -1066,7 +1103,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 Bezpečná platba objednávky
               </h1>
               <p className="text-xs text-slate-400">
-                Objednávka: <span className="font-mono text-white">{order?.id}</span> • Částka: <strong className="text-emerald-400">1 990 Kč</strong>
+                Objednávka: <span className="font-mono text-white">{order?.id}</span> • Částka: <strong className="text-emerald-400">690 Kč</strong> <span className="text-slate-500 line-through text-[11px] ml-1">1 990 Kč</span>
               </p>
             </div>
 
@@ -1096,12 +1133,12 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   {isSimulatingPayment ? (
                     <>
                       <RotateCw className="w-4 h-4 animate-spin" />
-                      <span>Ověřuji a provádím platbu 1 990 Kč...</span>
+                      <span>Ověřuji a provádím platbu 690 Kč...</span>
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-black" />
-                      <span>Zaplatit 1 990 Kč (Ověřená platba)</span>
+                      <span>Zaplatit 690 Kč (Ověřená platba)</span>
                     </>
                   )}
                 </button>
@@ -1154,7 +1191,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 </div>
                 <div className="flex items-center gap-2.5 text-emerald-400">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Platba 1 990 Kč úspěšně zaúčtována na serveru</span>
+                  <span>Platba {order?.priceCz || 690} Kč úspěšně zaúčtována na serveru</span>
                 </div>
                 <div className="flex items-center gap-2.5 text-blue-300 font-medium">
                   <RotateCw className="w-4 h-4 animate-spin text-blue-400" />
@@ -1201,7 +1238,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   </h2>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Objednávka <span className="font-mono text-white">{order?.id}</span> • Platba <span className="text-emerald-400 font-semibold">1 990 Kč potvrzena</span>
+                  Objednávka <span className="font-mono text-white">{order?.id}</span> • Platba <span className="text-emerald-400 font-semibold">{order?.priceCz || 690} Kč potvrzena</span>
                 </p>
               </div>
 

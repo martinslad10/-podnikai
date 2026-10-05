@@ -54,7 +54,9 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = 3000;
 
-export const BUSINESS_START_PRICE_CZK = 1990;
+export const BUSINESS_START_ORIGINAL_PRICE_CZK = 1990;
+export const BUSINESS_START_PRICE_CZK = 690;
+export const BUSINESS_START_DISCOUNT_PERCENT = 65;
 export const BUSINESS_START_CURRENCY = 'CZK';
 const WEBHOOK_SIGNING_SECRET = process.env.STRIPE_WEBHOOK_SECRET || process.env.ADMIN_SESSION_SECRET || 'podnikai_secure_webhook_secret_2026';
 
@@ -3820,6 +3822,12 @@ app.post('/api/business-start/order/draft', async (req, res) => {
       if (client.order) {
         client.order.clientName = safeQ.clientName || client.order.clientName;
         client.order.clientEmail = safeQ.clientEmail || client.order.clientEmail;
+        if (client.order.paymentStatus !== 'PAID') {
+          client.order.priceCz = BUSINESS_START_PRICE_CZK;
+          client.order.originalPriceCz = BUSINESS_START_ORIGINAL_PRICE_CZK;
+          client.order.discountPercent = BUSINESS_START_DISCOUNT_PERCENT;
+          client.priceCz = BUSINESS_START_PRICE_CZK;
+        }
         client.order.updatedAt = now;
       }
       await writePersistedBusinessStartClients(clients);
@@ -3843,7 +3851,9 @@ app.post('/api/business-start/order/draft', async (req, res) => {
       clientEmail: safeQ.clientEmail || '',
       clientName: safeQ.clientName || 'Zájemce o podnikání',
       orderToken,
-      priceCz: BUSINESS_START_PRICE_CZK, // 1990 Kč
+      priceCz: BUSINESS_START_PRICE_CZK, // 690 Kč (startovací sleva)
+      originalPriceCz: BUSINESS_START_ORIGINAL_PRICE_CZK, // 1 990 Kč
+      discountPercent: BUSINESS_START_DISCOUNT_PERCENT, // 65 %
       currency: BUSINESS_START_CURRENCY, // CZK
       status: 'READY_FOR_PAYMENT',
       paymentStatus: 'UNPAID',
@@ -3967,9 +3977,9 @@ app.post('/api/business-start/order/:orderId/checkout', async (req, res) => {
               currency: 'czk',
               product_data: {
                 name: 'PODNIKAI Business Start',
-                description: 'Individuální podnikatelská analýza a Business Report (12 otázek, AI Blueprint, finanční model, PDF)',
+                description: 'Individuální podnikatelská analýza a Business Report (Startovací sleva 65 % z původních 1 990 Kč)',
               },
-              unit_amount: BUSINESS_START_PRICE_CZK * 100, // 1 990 Kč in haléřích
+              unit_amount: BUSINESS_START_PRICE_CZK * 100, // 690 Kč v haléřích (69 000)
             },
             quantity: 1,
           },
@@ -4002,9 +4012,11 @@ app.post('/api/business-start/order/:orderId/checkout', async (req, res) => {
       success: true,
       mode: 'sandbox',
       priceCz: BUSINESS_START_PRICE_CZK,
+      originalPriceCz: BUSINESS_START_ORIGINAL_PRICE_CZK,
+      discountPercent: BUSINESS_START_DISCOUNT_PERCENT,
       currency: BUSINESS_START_CURRENCY,
       order: client.order,
-      message: 'Sandbox platební brána připravena pro bezpečný test platby 1 990 Kč.'
+      message: 'Sandbox platební brána připravena pro bezpečný test platby 690 Kč (startovací sleva 65 % z 1 990 Kč).'
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Chyba při přípravě platby' });

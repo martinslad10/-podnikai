@@ -134,7 +134,8 @@ export async function generateBusinessStartPdfBuffer(client: BusinessStartClient
 
   setBold(8, accentGreen);
   doc.text('Stav platby: ', col2, startY + 36, { continued: true });
-  doc.text('UHRAZENO 1 990 Kč (Ověřeno serverem)');
+  const paidPrice = client.order?.priceCz ? `${client.order.priceCz} Kč` : '690 Kč';
+  doc.text(`UHRAZENO ${paidPrice} (Startovací sleva • Ověřeno serverem)`);
 
   doc.y = startY + 62;
 

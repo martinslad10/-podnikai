@@ -835,7 +835,9 @@ export interface BusinessStartOrder {
   clientEmail: string;
   clientName: string;
   orderToken: string; // secure secret token for authorization
-  priceCz: number; // 1990
+  priceCz: number; // 690 Kč (starter discounted price)
+  originalPriceCz?: number; // 1990 Kč (original standard price)
+  discountPercent?: number; // 65 %
   currency: 'CZK';
   status: BusinessStartOrderStatus;
   paymentStatus: BusinessStartPaymentStatus;

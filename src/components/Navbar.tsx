@@ -219,11 +219,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50 shadow-md shadow-emerald-500/20'
                   : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-white border-emerald-500/30'
               }`}
-              title="Spustit Business Start (1 990 Kč) – 12 otázek, AI Blueprint & PDF"
+              title="Spustit Business Start (690 Kč) – 12 otázek, AI Blueprint & PDF"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
               <span>Business Start</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-extrabold border border-emerald-500/40">1 990 Kč</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-extrabold border border-emerald-500/40">690 Kč</span>
             </button>
 
             {/* PODNIKAI Business Start Internal Admin Link */}
