@@ -3970,6 +3970,7 @@ app.post('/api/business-start/order/:orderId/checkout', async (req, res) => {
       const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
       const appUrl = (process.env.APP_URL || `${proto}://${host}`).replace(/\/$/, '');
       const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
         line_items: [
           {
             price_data: {
