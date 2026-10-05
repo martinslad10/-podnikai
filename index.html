@@ -8,9 +8,20 @@
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
+      window.gtag = gtag;
 
-      gtag('config', 'G-CKLVMBFKM0');
+      // Google Consent Mode v2: Explicitly grant analytics storage for EEA/EU
+      gtag('consent', 'default', {
+        'analytics_storage': 'granted',
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied'
+      });
+
+      gtag('js', new Date());
+      gtag('config', 'G-CKLVMBFKM0', {
+        'debug_mode': true
+      });
     </script>
     <title>PODNIKAI Business Start – Váš ucelený byznys plán a strategie</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/></svg>" />

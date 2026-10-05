@@ -36,11 +36,12 @@ export function sanitizeUrlForAnalytics(rawUrl: string): string {
 export function sendGtag(...args: any[]): void {
   if (typeof window === 'undefined') return;
   window.dataLayer = window.dataLayer || [];
-  if (typeof window.gtag === 'function') {
-    window.gtag(...args);
-  } else {
-    window.dataLayer.push(args);
+  if (typeof window.gtag !== 'function') {
+    window.gtag = function() {
+      (window.dataLayer = window.dataLayer || []).push(arguments);
+    };
   }
+  window.gtag(...args);
 }
 
 /**
