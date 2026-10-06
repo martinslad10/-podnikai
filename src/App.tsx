@@ -22,6 +22,7 @@ import { generateNextDailyStep, fetchSavedLeads, saveLeadsToServer } from './ser
 import { createActivityEntry, normalizeLeadStatusSeparation } from './utils/leadActivities';
 import { mergeLeadsWithExisting } from './utils/leadMerge';
 import { trackPageView } from './utils/analytics';
+import { SeoGuideView } from './components/seo/SeoGuideView';
 
 const STORAGE_KEY_PROFILE = 'podnikai_user_profile';
 const STORAGE_KEY_PROJECT = 'podnikai_current_project';
@@ -32,11 +33,17 @@ const STORAGE_KEY_RECOMMENDED_DIR = 'podnikai_recommended_direction';
 const STORAGE_KEY_LEADS = 'podnikai_customer_leads';
 const STORAGE_KEY_APP_MODE = 'podnikai_app_execution_mode';
 
-function getAppRoute(): 'business-start' | 'admin' | 'dev-preview' {
-  if (typeof window === 'undefined') return 'business-start';
+interface AppRouteState {
+  type: 'business-start' | 'admin' | 'dev-preview' | 'guide';
+  guideSlug?: string;
+}
+
+function getAppRoute(): AppRouteState {
+  if (typeof window === 'undefined') return { type: 'business-start' };
   const search = new URLSearchParams(window.location.search);
   const hash = window.location.hash.toLowerCase();
-  const path = window.location.pathname.toLowerCase();
+  const rawPath = window.location.pathname.toLowerCase().replace(/\/$/, '');
+  const path = rawPath === '' ? '/' : rawPath;
 
   // 1. Admin access check (?admin=1, ?admin=true, /admin, #admin, #admin-business-start)
   if (
@@ -46,25 +53,44 @@ function getAppRoute(): 'business-start' | 'admin' | 'dev-preview' {
     hash === '#admin' ||
     hash === '#admin-business-start'
   ) {
-    return 'admin';
+    return { type: 'admin' };
   }
 
-  // 2. Developer internal preview check (?dev=1, ?preview=full, #dev-preview)
+  // 2. SEO Guide checks (/jak-zacit-podnikat, /v-cem-podnikat, /podnikani-pro-zacatecniky, /podnikatelsky-plan, /jak-ziskat-prvni-zakazniky)
+  const guideSlugs = ['jak-zacit-podnikat', 'v-cem-podnikat', 'podnikani-pro-zacatecniky', 'podnikatelsky-plan', 'jak-ziskat-prvni-zakazniky'];
+  for (const slug of guideSlugs) {
+    if (path === `/${slug}` || hash === `#${slug}` || search.get('p') === slug || search.get('guide') === slug) {
+      return { type: 'guide', guideSlug: slug };
+    }
+  }
+
+  // 3. Developer internal preview check (?dev=1, ?preview=full, #dev-preview)
   if (
     search.get('dev') === '1' ||
     search.get('preview') === 'full' ||
     hash === '#dev-preview'
   ) {
-    return 'dev-preview';
+    return { type: 'dev-preview' };
   }
 
-  // 3. Default production route: 100% Business Start public customer experience
-  return 'business-start';
+  // 4. Default production route: 100% Business Start public customer experience
+  return { type: 'business-start' };
 }
 
 export default function App() {
   // Production Application Route State
-  const [currentRoute, setCurrentRoute] = useState<'business-start' | 'admin' | 'dev-preview'>(getAppRoute);
+  const [currentRoute, setCurrentRoute] = useState<AppRouteState>(getAppRoute);
+
+  const navigateTo = (pathOrHash: string) => {
+    if (pathOrHash.startsWith('/#') || pathOrHash.startsWith('#')) {
+      window.location.hash = pathOrHash.replace(/^\//, '');
+    } else {
+      window.history.pushState({}, '', pathOrHash);
+    }
+    setCurrentRoute(getAppRoute());
+    trackPageView();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   useEffect(() => {
     trackPageView();
@@ -449,7 +475,7 @@ export default function App() {
   };
 
   // 1. DEDICATED ADMIN ROUTE (?admin=1, ?admin=true, /admin, #admin, #admin-business-start)
-  if (currentRoute === 'admin') {
+  if (currentRoute.type === 'admin') {
     return (
       <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col relative overflow-hidden font-sans">
         <div className="fixed top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
@@ -460,21 +486,39 @@ export default function App() {
     );
   }
 
-  // 2. PRODUCTION PUBLIC ROOT ROUTE ("/") — 100% BUSINESS START CUSTOMER EXPERIENCE ONLY
-  // Public customers see ONLY the finished PODNIKAI Business Start product. Unfinished modules are never exposed.
-  if (currentRoute === 'business-start') {
+  // 2. SEO INFORMATIVE GUIDES (/jak-zacit-podnikat, /v-cem-podnikat, /podnikani-pro-zacatecniky, /podnikatelsky-plan, /jak-ziskat-prvni-zakazniky)
+  if (currentRoute.type === 'guide') {
     return (
       <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col relative overflow-hidden font-sans">
         <div className="fixed top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
         <div className="fixed bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-indigo-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
         <main className="flex-1 relative z-10">
-          <BusinessStartClientFlowView />
+          <SeoGuideView
+            guideSlug={currentRoute.guideSlug || 'jak-zacit-podnikat'}
+            onNavigateHome={() => navigateTo('/')}
+            onNavigateGuide={(slug) => navigateTo(`/${slug}`)}
+            onStartBusinessStart={() => navigateTo('/#business-start')}
+          />
         </main>
       </div>
     );
   }
 
-  // 3. DEVELOPER INTERNAL PREVIEW (Accessible only via ?dev=1 or ?preview=full or #dev-preview)
+  // 3. PRODUCTION PUBLIC ROOT ROUTE ("/") — 100% BUSINESS START CUSTOMER EXPERIENCE ONLY
+  // Public customers see ONLY the finished PODNIKAI Business Start product. Unfinished modules are never exposed.
+  if (currentRoute.type === 'business-start') {
+    return (
+      <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col relative overflow-hidden font-sans">
+        <div className="fixed top-[-10%] left-[-10%] w-[45%] h-[45%] bg-blue-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
+        <div className="fixed bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-indigo-600/10 rounded-full blur-[130px] pointer-events-none z-0" />
+        <main className="flex-1 relative z-10">
+          <BusinessStartClientFlowView onNavigateGuide={(slug) => navigateTo(`/${slug}`)} />
+        </main>
+      </div>
+    );
+  }
+
+  // 4. DEVELOPER INTERNAL PREVIEW (Accessible only via ?dev=1 or ?preview=full or #dev-preview)
   // Preserves existing unfinished modules in codebase without exposing them publicly
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col relative overflow-hidden font-sans">

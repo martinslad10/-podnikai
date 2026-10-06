@@ -30,7 +30,6 @@ import {
   saveBusinessStartDraft, 
   fetchBusinessStartOrder, 
   initiateBusinessStartCheckout, 
-  simulateBusinessStartPayment, 
   retryBusinessStartAnalysis,
   markBusinessStartPdfReady
 } from '../services/api';
@@ -54,16 +53,18 @@ interface BusinessStartClientFlowViewProps {
   onBackToHome?: () => void;
   initialOrderId?: string;
   initialOrderToken?: string;
+  onNavigateGuide?: (slug: string) => void;
 }
 
 export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewProps> = ({
   onBackToHome,
   initialOrderId,
-  initialOrderToken
+  initialOrderToken,
+  onNavigateGuide
 }) => {
   // Navigation & Step State
-  // 0: intro (free introduction), 1: intake (12 questions), 2: checkout_summary, 3: payment_processing, 4: analyzing, 5: report_ready
-  const [currentStep, setCurrentStep] = useState<'intro' | 'intake' | 'summary' | 'payment' | 'analyzing' | 'report'>('intro');
+  // 0: intro (free introduction), 1: intake (12 questions), 2: checkout_summary, 3: analyzing, 4: report_ready
+  const [currentStep, setCurrentStep] = useState<'intro' | 'intake' | 'summary' | 'analyzing' | 'report'>('intro');
   const [activeQuestionIndex, setActiveQuestionIndex] = useState<number>(0);
 
   // Form & Order State
@@ -76,7 +77,6 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [successNotice, setSuccessNotice] = useState<string>('');
-  const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
   const [isRetryingAnalysis, setIsRetryingAnalysis] = useState(false);
 
   // Restore existing session ONLY if explicit in URL/props, or keep as an optional prompt
@@ -175,7 +175,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
         } else if (res.order.status === 'PAID') {
           setCurrentStep('analyzing');
         } else if (res.order.status === 'PAYMENT_PENDING' || res.order.status === 'PAYMENT_FAILED') {
-          setCurrentStep('payment');
+          setCurrentStep('summary');
         } else if (res.order.status === 'READY_FOR_PAYMENT') {
           setCurrentStep('summary');
         }
@@ -277,45 +277,16 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
     setError('');
     try {
       const res = await initiateBusinessStartCheckout(order.id, order.orderToken);
-      if (res.success) {
-        if (res.mode === 'stripe_hosted' && res.checkoutUrl) {
-          window.location.href = res.checkoutUrl;
-          return;
-        }
-        // Sandbox mode
-        setCurrentStep('payment');
-        if (res.order) setOrder(res.order);
+      if (res.success && res.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
+        return;
       } else {
-        setError(res.error || 'Nepodařilo se spustit platební bránu');
+        setError(res.error || 'Platební brána Stripe se připravuje nebo nebyla nalezena platební adresa. Zkuste to prosím za okamžik.');
       }
     } catch (err: any) {
-      setError(err.message || 'Chyba při inicializaci platby');
+      setError(err.message || 'Chyba při inicializaci platby přes Stripe');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleExecuteSandboxPayment = async (outcome: 'SUCCESS' | 'FAILURE' = 'SUCCESS') => {
-    if (!order || !order.id || !order.orderToken) return;
-
-    setIsSimulatingPayment(true);
-    setError('');
-    try {
-      const res = await simulateBusinessStartPayment(order.id, order.orderToken, outcome);
-      if (res.success && outcome === 'SUCCESS') {
-        setCurrentStep('analyzing');
-        // Reload order state after payment
-        await loadOrder(order.id, order.orderToken, false);
-      } else if (outcome === 'FAILURE') {
-        setError('Platba byla zamítnuta (testovací simulace selhání platby).');
-        if (res.order) setOrder(res.order);
-      } else {
-        setError(res.error || 'Platba nebyla potvrzena');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Chyba při zpracování platby');
-    } finally {
-      setIsSimulatingPayment(false);
     }
   };
 
@@ -351,8 +322,6 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   if (currentStep === 'report') {
                     if (onBackToHome) onBackToHome();
                     else setCurrentStep('intro');
-                  } else if (currentStep === 'payment') {
-                    setCurrentStep('summary');
                   } else if (currentStep === 'summary') {
                     setCurrentStep('intake');
                   } else if (currentStep === 'intake') {
@@ -403,7 +372,7 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
             </button>
             <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
             <span className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-              currentStep === 'summary' || currentStep === 'payment' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 bg-white/5'
+              currentStep === 'summary' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 bg-white/5'
             }`}>
               3. Platba (690 Kč)
             </span>
@@ -1068,6 +1037,21 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                 <div>Kapitál: <strong className="text-white">{formData.startingCapital}</strong> | Čas: <strong className="text-white">{formData.weeklyTimeCommitment}</strong></div>
               </div>
 
+              {/* Payment status banners */}
+              {order?.status === 'PAYMENT_PENDING' && (
+                <div className="p-3.5 rounded-xl bg-blue-950/30 border border-blue-500/30 text-xs text-blue-200 flex items-center gap-2.5">
+                  <RotateCw className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
+                  <span>Platba čeká na potvrzení z platební brány Stripe. Pokud jste již zaplatili, systém stránku automaticky aktualizuje.</span>
+                </div>
+              )}
+
+              {order?.status === 'PAYMENT_FAILED' && (
+                <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs text-amber-200 flex items-center gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Předchozí pokus o platbu nebyl dokončen nebo byl zrušen. Objednávku můžete bez obav zaplatit nyní.</span>
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <button
@@ -1082,74 +1066,10 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
                   type="button"
                   onClick={handleProceedToPayment}
                   disabled={isLoading}
-                  className="w-full sm:w-auto px-7 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-sm transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-sm transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2"
                 >
                   <CreditCard className="w-4 h-4" />
-                  <span>Pokračovat k platbě 690 Kč</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: PAYMENT SCREEN (SANDBOX / STRIPE) */}
-        {currentStep === 'payment' && (
-          <div className="max-w-xl mx-auto space-y-6">
-            <div className="text-center space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-2">
-                <CreditCard className="w-6 h-6" />
-              </div>
-              <h1 className="text-2xl font-heading font-black text-white">
-                Bezpečná platba objednávky
-              </h1>
-              <p className="text-xs text-slate-400">
-                Objednávka: <span className="font-mono text-white">{order?.id}</span> • Částka: <strong className="text-emerald-400">690 Kč</strong> <span className="text-slate-500 line-through text-[11px] ml-1">1 990 Kč</span>
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-[#090D1A] border border-white/10 shadow-2xl space-y-6">
-              <div className="p-4 rounded-xl bg-blue-950/20 border border-blue-500/20 text-xs text-blue-200 space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-blue-400" />
-                  <span>Server-side ověření platby</span>
-                </div>
-                <p className="text-slate-300 text-[11px] leading-relaxed">
-                  Analýza a Business Report se spustí výhradně po potvrzení platby serverem (kryptograficky ověřený webhook).
-                </p>
-              </div>
-
-              {/* Test Sandbox Payment Simulation Actions */}
-              <div className="space-y-3 pt-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
-                  Provést platbu (Testovací & Sandbox prostředí):
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => handleExecuteSandboxPayment('SUCCESS')}
-                  disabled={isSimulatingPayment}
-                  className="w-full py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
-                >
-                  {isSimulatingPayment ? (
-                    <>
-                      <RotateCw className="w-4 h-4 animate-spin" />
-                      <span>Ověřuji a provádím platbu 690 Kč...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-black" />
-                      <span>Zaplatit 690 Kč (Ověřená platba)</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleExecuteSandboxPayment('FAILURE')}
-                  disabled={isSimulatingPayment}
-                  className="w-full py-2 px-3 rounded-lg bg-red-950/20 hover:bg-red-950/40 text-red-400 text-[11px] font-semibold border border-red-500/20 transition-colors"
-                >
-                  Simulovat neúspěšnou platbu (test chybového stavu)
+                  <span>{isLoading ? 'Přesměrovávám na Stripe...' : 'Zaplatit 690 Kč (Stripe Checkout)'}</span>
                 </button>
               </div>
             </div>
@@ -1255,6 +1175,82 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
             </div>
           </div>
         )}
+
+        {/* Public Informational & SEO Guides Navigation Footer */}
+        <footer className="mt-16 pt-8 border-t border-white/10 text-center space-y-6">
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Praktičtí průvodci pro začínající podnikatele v ČR
+            </h3>
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs">
+              <a
+                href="/jak-zacit-podnikat"
+                onClick={(e) => {
+                  if (onNavigateGuide) {
+                    e.preventDefault();
+                    onNavigateGuide('jak-zacit-podnikat');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors"
+              >
+                Jak začít podnikat
+              </a>
+              <a
+                href="/v-cem-podnikat"
+                onClick={(e) => {
+                  if (onNavigateGuide) {
+                    e.preventDefault();
+                    onNavigateGuide('v-cem-podnikat');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors"
+              >
+                V čem podnikat
+              </a>
+              <a
+                href="/podnikani-pro-zacatecniky"
+                onClick={(e) => {
+                  if (e.defaultPrevented) return;
+                  if (onNavigateGuide) {
+                    e.preventDefault();
+                    onNavigateGuide('podnikani-pro-zacatecniky');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors"
+              >
+                Podnikání pro začátečníky
+              </a>
+              <a
+                href="/podnikatelsky-plan"
+                onClick={(e) => {
+                  if (onNavigateGuide) {
+                    e.preventDefault();
+                    onNavigateGuide('podnikatelsky-plan');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors"
+              >
+                Podnikatelský plán
+              </a>
+              <a
+                href="/jak-ziskat-prvni-zakazniky"
+                onClick={(e) => {
+                  if (onNavigateGuide) {
+                    e.preventDefault();
+                    onNavigateGuide('jak-ziskat-prvni-zakazniky');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors"
+              >
+                Jak získat první zákazníky
+              </a>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-500 max-w-xl mx-auto leading-relaxed">
+            PODNIKAI Business Start • 12 otázek zdarma • Komplexní analýza mantinelů & 30denní plán za 690 Kč (startovací sleva 65 % z 1 990 Kč). Informační podklady negarantují budoucí zisk.
+          </p>
+        </footer>
       </div>
     </div>
   );

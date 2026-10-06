@@ -37,6 +37,7 @@ import {
   isOnlineOnlyBusinessModel
 } from './src/utils/businessStartCandidateFilter';
 import { generateBusinessStartPdfBuffer } from './src/utils/businessStartPdfGenerator';
+import { SEO_GUIDES } from './src/data/seoGuidesData';
 import Stripe from 'stripe';
 import type { 
   BusinessStartClient, 
@@ -4290,6 +4291,25 @@ app.all('/api/*', (req, res) => {
   res.status(404).json({ error: `API endpoint nebyl nalezen: ${req.method} ${req.originalUrl}` });
 });
 
+// Explicit static handlers for robots.txt and sitemap.xml
+app.get('/robots.txt', (req, res) => {
+  const robotsPath = path.join(process.cwd(), 'public', 'robots.txt');
+  if (fs.existsSync(robotsPath)) {
+    res.type('text/plain').sendFile(robotsPath);
+  } else {
+    res.status(404).send('Not found');
+  }
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  const sitemapPath = path.join(process.cwd(), 'public', 'sitemap.xml');
+  if (fs.existsSync(sitemapPath)) {
+    res.type('application/xml').sendFile(sitemapPath);
+  } else {
+    res.status(404).send('Not found');
+  }
+});
+
 // Production and Vite Middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -4304,6 +4324,30 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+
+    // Server-side meta injection for SEO guides in production
+    Object.keys(SEO_GUIDES).forEach(slug => {
+      app.get(`/${slug}`, (req, res) => {
+        const guide = SEO_GUIDES[slug];
+        const htmlPath = path.join(distPath, 'index.html');
+        if (!fs.existsSync(htmlPath)) {
+          return res.status(404).send('Not found');
+        }
+        let html = fs.readFileSync(htmlPath, 'utf8');
+        if (guide) {
+          html = html.replace(/<title>.*?<\/title>/, `<title>${guide.metaTitle}</title>`);
+          html = html.replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${guide.metaDescription}" />`);
+          html = html.replace(/<link rel="canonical" href=".*?" \/>/, `<link rel="canonical" href="https://podnikai.onrender.com/${guide.slug}" />`);
+          html = html.replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${guide.metaTitle}" />`);
+          html = html.replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${guide.metaDescription}" />`);
+          html = html.replace(/<meta property="og:url" content=".*?" \/>/, `<meta property="og:url" content="https://podnikai.onrender.com/${guide.slug}" />`);
+          html = html.replace(/<meta name="twitter:title" content=".*?" \/>/, `<meta name="twitter:title" content="${guide.metaTitle}" />`);
+          html = html.replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${guide.metaDescription}" />`);
+        }
+        res.type('text/html').send(html);
+      });
+    });
+
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
