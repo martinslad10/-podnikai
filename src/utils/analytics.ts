@@ -106,6 +106,19 @@ export function trackQuestionnaireComplete(): void {
 }
 
 /**
+ * 3b. offer_view
+ * Fired when the user views the Business Start product offer & value presentation
+ */
+export function trackOfferView(orderId?: string, value: number = 690): void {
+  sendGtag('event', 'offer_view', {
+    event_category: 'business_start',
+    currency: 'CZK',
+    value: value,
+    ...(orderId ? { order_id: orderId } : {})
+  });
+}
+
+/**
  * 4. checkout_start
  * Fired when the user proceeds to payment
  */

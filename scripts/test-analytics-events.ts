@@ -7,6 +7,7 @@ import {
   trackPageView, 
   trackQuestionnaireStart, 
   trackQuestionnaireComplete, 
+  trackOfferView,
   trackCheckoutStart, 
   trackPurchase, 
   trackReportReady, 
@@ -124,6 +125,16 @@ async function runAnalyticsTests() {
   assert(!qComplete[2].answers, 'No questionnaire answers sent to GA4');
   assert(!qComplete[2].email, 'No email sent to GA4');
   console.log('  ✅ PASS: questionnaire_complete tracked without sensitive data');
+
+  // TEST 4b: offer_view Event
+  console.log('\n[TEST 4b: offer_view Event]');
+  trackOfferView('order-bs-test-123', 690);
+  const offerEvent = getLastEvent('offer_view');
+  assert(offerEvent, 'offer_view event recorded');
+  assert.strictEqual(offerEvent[2].value, 690, 'Offer value is 690 Kč');
+  assert.strictEqual(offerEvent[2].currency, 'CZK', 'Currency is CZK');
+  assert.strictEqual(offerEvent[2].order_id, 'order-bs-test-123', 'Order ID passed');
+  console.log('  ✅ PASS: offer_view tracked with value: 690 CZK');
 
   // TEST 5: checkout_start Event
   console.log('\n[TEST 5: checkout_start Event]');
