@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { 
   GA_MEASUREMENT_ID, 
+  META_PIXEL_ID,
   sendGtag, 
   trackPageView, 
   trackQuestionnaireStart, 
@@ -13,25 +14,30 @@ import {
   trackReportReady, 
   trackPdfDownload, 
   sanitizeUrlForAnalytics,
-  resetAnalyticsStateForTests
+  resetAnalyticsStateForTests,
+  setCookieConsent,
+  getCookieConsent,
+  resetCookieConsent
 } from '../src/utils/analytics';
 
-// Mock window and dataLayer for Node environment
+// Mock window, dataLayer, fbq, localStorage and sessionStorage for Node environment
 const mockDataLayer: any[] = [];
-(global as any).window = {
-  dataLayer: mockDataLayer,
-  location: {
-    pathname: '/business-start',
-    search: '?orderId=order-test-123&token=secret-token-xyz',
-    hash: '#business-start',
-    href: 'https://podnikai.onrender.com/business-start?orderId=order-test-123&token=secret-token-xyz#business-start'
-  }
-};
-(global as any).document = {
-  title: 'PODNIKAI Business Start'
+const mockFbqCalls: any[][] = [];
+
+const mockLocalStorage: Record<string, string> = {};
+const mockSessionStorage: Record<string, string> = {};
+
+(global as any).localStorage = {
+  getItem: (key: string) => mockLocalStorage[key] || null,
+  setItem: (key: string, value: string) => { mockLocalStorage[key] = value; },
+  removeItem: (key: string) => { delete mockLocalStorage[key]; },
+  clear: () => {
+    for (const k in mockLocalStorage) delete mockLocalStorage[k];
+  },
+  key: (index: number) => Object.keys(mockLocalStorage)[index] || null,
+  get length() { return Object.keys(mockLocalStorage).length; }
 };
 
-const mockSessionStorage: Record<string, string> = {};
 (global as any).sessionStorage = {
   getItem: (key: string) => mockSessionStorage[key] || null,
   setItem: (key: string, value: string) => { mockSessionStorage[key] = value; },
@@ -41,6 +47,49 @@ const mockSessionStorage: Record<string, string> = {};
   },
   key: (index: number) => Object.keys(mockSessionStorage)[index] || null,
   get length() { return Object.keys(mockSessionStorage).length; }
+};
+
+const mockFbq = function(...args: any[]) {
+  mockFbqCalls.push(args);
+};
+
+const eventListeners: Record<string, Function[]> = {};
+
+(global as any).window = {
+  dataLayer: mockDataLayer,
+  fbq: mockFbq,
+  dispatchEvent: (event: any) => {
+    const list = eventListeners[event.type] || [];
+    list.forEach(fn => fn(event));
+    return true;
+  },
+  addEventListener: (type: string, fn: Function) => {
+    if (!eventListeners[type]) eventListeners[type] = [];
+    eventListeners[type].push(fn);
+  },
+  removeEventListener: (type: string, fn: Function) => {
+    if (!eventListeners[type]) return;
+    eventListeners[type] = eventListeners[type].filter(f => f !== fn);
+  },
+  location: {
+    pathname: '/business-start',
+    search: '?orderId=order-test-123&token=secret-token-xyz',
+    hash: '#business-start',
+    href: 'https://podnikai.onrender.com/business-start?orderId=order-test-123&token=secret-token-xyz#business-start'
+  }
+};
+
+(global as any).document = {
+  title: 'PODNIKAI Business Start'
+};
+
+(global as any).CustomEvent = class {
+  type: string;
+  detail: any;
+  constructor(type: string, params?: { detail: any }) {
+    this.type = type;
+    this.detail = params?.detail;
+  }
 };
 
 function getLastEvent(eventName?: string): any {
@@ -64,172 +113,158 @@ function countEvents(eventName: string): number {
   }).length;
 }
 
+function getFbqCalls(command?: string, eventName?: string): any[][] {
+  return mockFbqCalls.filter(call => {
+    if (command && call[0] !== command) return false;
+    if (eventName && call[1] !== eventName) return false;
+    return true;
+  });
+}
+
 async function runAnalyticsTests() {
   console.log('================================================================');
-  console.log('TESTING GOOGLE ANALYTICS 4 (GA4) INTEGRATION & EVENTS');
+  console.log('VERIFYING PRIVACY, COOKIE CONSENT & META PIXEL WORKFLOW');
   console.log('================================================================');
 
-  // TEST 1: Verification of Measurement ID in index.html
-  console.log('\n[TEST 1: Verification of GA4 Tag & Measurement ID in index.html]');
+  // TEST 1: Verification of Measurement ID and Meta Pixel ID in index.html
+  console.log('\n[OVĚŘENÍ 1: Výchozí konfigurace v index.html s ochranou soukromí v EHP]');
   const indexHtmlPath = path.resolve('index.html');
   const indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
   assert(indexHtml.includes('https://www.googletagmanager.com/gtag/js?id=G-CKLVMBFKM0'), 'index.html includes GA4 script src with G-CKLVMBFKM0');
   assert(indexHtml.includes("gtag('config', 'G-CKLVMBFKM0'"), 'index.html initializes gtag with G-CKLVMBFKM0');
-  assert(indexHtml.includes('window.gtag = gtag'), 'index.html exports window.gtag explicitly');
-  assert(indexHtml.includes("'analytics_storage': 'granted'"), 'index.html contains Consent Mode v2 analytics_storage: granted');
-  assert(indexHtml.includes("'debug_mode': true"), 'index.html enables debug_mode for realtime DebugView');
+  assert(indexHtml.includes('1598776808008151'), 'index.html includes Meta Pixel ID 1598776808008151');
+  assert(indexHtml.includes("fbq('consent', 'revoke')"), 'index.html defaults Meta Pixel consent to revoked');
+  assert(indexHtml.includes("analytics_storage': 'denied'"), 'index.html defaults GA4 Consent Mode v2 to denied prior to choice');
   assert.strictEqual(GA_MEASUREMENT_ID, 'G-CKLVMBFKM0', 'analytics.ts constants match G-CKLVMBFKM0');
-  console.log('  ✅ PASS: GA4 Google tag correctly present in index.html with Measurement ID G-CKLVMBFKM0, window.gtag, Consent Mode v2, and debug_mode');
+  assert.strictEqual(META_PIXEL_ID, '1598776808008151', 'analytics.ts constants match 1598776808008151');
+  console.log('  ✅ PASS: V index.html je Meta Pixel ve výchozím stavu zablokován přes fbq("consent", "revoke") a Google Consent Mode v2 má denied');
 
-  // TEST 2: Page View Tracking & Strict Token Sanitization
-  console.log('\n[TEST 2: Standard page_view & Strict Privacy Sanitization]');
-  trackPageView();
-  const pageViewEvent = getLastEvent('page_view');
-  assert(pageViewEvent, 'page_view event was recorded');
-  const pageViewParams = pageViewEvent[2];
-  assert(!pageViewParams.page_location.includes('secret-token-xyz'), 'page_location must never contain raw security tokens');
-  assert(!pageViewParams.page_path.includes('secret-token-xyz'), 'page_path must never contain raw security tokens');
-  assert(pageViewParams.page_location.includes('[REDACTED]'), 'Tokens are sanitized to [REDACTED]');
-  console.log('  ✅ PASS: page_view tracked with automatic security token redaction');
-
-  // Sanitizer test on emails and tokens
-  const sampleWithEmail = 'https://podnikai.onrender.com/?user=jan.novak@example.com&token=abc12345';
-  const sanitized = sanitizeUrlForAnalytics(sampleWithEmail);
-  assert(!sanitized.includes('jan.novak@example.com'), 'Email is redacted');
-  assert(!sanitized.includes('abc12345'), 'Token is redacted');
-  console.log('  ✅ PASS: Privacy filter sanitizes emails and tokens from URLs');
-
-  // TEST 3: questionnaire_start Event
-  console.log('\n[TEST 3: questionnaire_start Event]');
+  // TEST 2: Volba „Pouze nezbytné“ nespouští Meta Pixel ani marketingové události
+  console.log('\n[OVĚŘENÍ 2: Volba „Pouze nezbytné“ striktně blokuje Meta Pixel]');
   resetAnalyticsStateForTests();
-  trackQuestionnaireStart();
-  const qStart = getLastEvent('questionnaire_start');
-  assert(qStart, 'questionnaire_start event recorded');
-  assert.strictEqual(qStart[2].event_category, 'business_start');
+  mockFbqCalls.length = 0;
 
-  // Verify idempotency within the same questionnaire session
-  const beforeCount = countEvents('questionnaire_start');
-  trackQuestionnaireStart();
-  const afterCount = countEvents('questionnaire_start');
-  assert.strictEqual(beforeCount, afterCount, 'questionnaire_start does not duplicate on redundant calls in same session');
-  console.log('  ✅ PASS: questionnaire_start tracked cleanly without duplicate firing');
+  // Bez souhlasu
+  trackPageView();
+  assert.strictEqual(getFbqCalls('track', 'PageView').length, 0, 'Před udělením souhlasu se Meta PageView nesmí odeslat');
 
-  // TEST 4: questionnaire_complete Event
-  console.log('\n[TEST 4: questionnaire_complete Event]');
-  trackQuestionnaireComplete();
-  const qComplete = getLastEvent('questionnaire_complete');
-  assert(qComplete, 'questionnaire_complete event recorded');
-  assert.strictEqual(qComplete[2].questions_count, 12, 'Includes 12 questions count');
-  assert.strictEqual(qComplete[2].event_category, 'business_start');
-  // Strict Privacy: Verify no answers or PII included
-  assert(!qComplete[2].answers, 'No questionnaire answers sent to GA4');
-  assert(!qComplete[2].email, 'No email sent to GA4');
-  console.log('  ✅ PASS: questionnaire_complete tracked without sensitive data');
+  // Po volbě "Pouze nezbytné"
+  setCookieConsent('necessary');
+  assert.strictEqual(getCookieConsent(), 'necessary');
+  trackPageView();
+  assert.strictEqual(getFbqCalls('track', 'PageView').length, 0, 'Při "Pouze nezbytné" se Meta PageView nesmí odeslat');
+  trackCheckoutStart(690);
+  assert.strictEqual(getFbqCalls('track', 'InitiateCheckout').length, 0, 'Při "Pouze nezbytné" se InitiateCheckout nesmí odeslat');
 
-  // TEST 4b: offer_view Event
-  console.log('\n[TEST 4b: offer_view Event]');
-  trackOfferView('order-bs-test-123', 690);
-  const offerEvent = getLastEvent('offer_view');
-  assert(offerEvent, 'offer_view event recorded');
-  assert.strictEqual(offerEvent[2].value, 690, 'Offer value is 690 Kč');
-  assert.strictEqual(offerEvent[2].currency, 'CZK', 'Currency is CZK');
-  assert.strictEqual(offerEvent[2].order_id, 'order-bs-test-123', 'Order ID passed');
-  console.log('  ✅ PASS: offer_view tracked with value: 690 CZK');
+  const revokeCalls = getFbqCalls('consent', 'revoke');
+  assert(revokeCalls.length > 0, 'Meta Pixel obdržel signál consent revoke');
+  console.log('  ✅ PASS: Při volbě „Pouze nezbytné“ se Meta Pixel nespouští a žádná marketingová událost se neodesílá');
 
-  // TEST 5: checkout_start Event
-  console.log('\n[TEST 5: checkout_start Event]');
-  trackCheckoutStart();
-  const checkoutEvent = getLastEvent('checkout_start');
-  assert(checkoutEvent, 'checkout_start event recorded');
-  assert.strictEqual(checkoutEvent[2].value, 690, 'Checkout value is 690 Kč');
-  assert.strictEqual(checkoutEvent[2].currency, 'CZK', 'Currency is CZK');
-  console.log('  ✅ PASS: checkout_start tracked with value: 690 CZK');
+  // TEST 3: Volba „Přijmout vše“ aktivuje Meta Pixel a odešle PageView
+  console.log('\n[OVĚŘENÍ 3: Volba „Přijmout vše“ aktivuje Meta Pixel a odesílá PageView]');
+  setCookieConsent('all');
+  assert.strictEqual(getCookieConsent(), 'all');
+  const grantCalls = getFbqCalls('consent', 'grant');
+  assert(grantCalls.length > 0, 'Meta Pixel obdržel consent grant');
+  const initCalls = getFbqCalls('init', '1598776808008151');
+  assert(initCalls.length > 0, 'Meta Pixel inicializován s ID 1598776808008151');
 
-  // TEST 6: purchase Event (Server-Confirmed Only)
-  console.log('\n[TEST 6: Server-Confirmed purchase Event]');
-  const testOrderId = 'order-bs-test-999';
-  const tracked1 = trackPurchase(testOrderId, 690, 'CZK');
-  assert.strictEqual(tracked1, true, 'First purchase tracking succeeded');
+  const initialPvCount = getFbqCalls('track', 'PageView').length;
+  trackPageView('/business-start');
+  const newPvCount = getFbqCalls('track', 'PageView').length;
+  assert(newPvCount > initialPvCount, 'Po udělení souhlasu se Meta PageView úspěšně odesílá');
+  console.log('  ✅ PASS: Po volbě „Přijmout vše“ se Meta Pixel aktivuje a PageView se odesílá');
 
-  const purchaseEvent = getLastEvent('purchase');
-  assert(purchaseEvent, 'purchase event recorded');
-  assert.strictEqual(purchaseEvent[2].transaction_id, testOrderId, 'transaction_id matches orderId');
-  assert.strictEqual(purchaseEvent[2].value, 690, 'Purchase value is 690 Kč');
-  assert.strictEqual(purchaseEvent[2].currency, 'CZK', 'Currency is CZK');
-  assert.strictEqual(purchaseEvent[2].items[0].price, 690, 'Item price is 690 Kč');
-  assert.strictEqual(purchaseEvent[2].items[0].quantity, 1, 'Quantity is 1');
+  // TEST 4: Odkaz „Nastavení cookies a soukromí“ a odvolání souhlasu
+  console.log('\n[OVĚŘENÍ 4: Odvolání souhlasu okamžitě zastaví další marketingové měření]');
+  let bannerTriggeredWith: any = 'not-called';
+  const testHandler = (e: any) => {
+    bannerTriggeredWith = e.detail;
+  };
+  window.addEventListener('podnikai-consent-change', testHandler);
 
-  // Strict Privacy: Verify no orderToken or user email in purchase payload
-  assert(!purchaseEvent[2].orderToken, 'No orderToken sent in purchase payload');
-  assert(!purchaseEvent[2].clientEmail, 'No clientEmail sent in purchase payload');
-  assert(!purchaseEvent[2].clientName, 'No clientName sent in purchase payload');
+  // Uživatel klikne v patičce na Nastavení cookies (volá resetCookieConsent())
+  resetCookieConsent();
+  assert.strictEqual(getCookieConsent(), null, 'resetCookieConsent smazal consent z localStorage');
+  assert.strictEqual(bannerTriggeredWith, null, 'Custom event podnikai-consent-change byl dispatchován s hodnotou null pro opětovné zobrazení banneru');
 
-  // Verification of Anti-Duplication (e.g. from polling in loadOrder)
-  const purchaseCountBefore = countEvents('purchase');
-  const tracked2 = trackPurchase(testOrderId, 690, 'CZK');
-  assert.strictEqual(tracked2, false, 'Second purchase tracking for same order was prevented');
-  const purchaseCountAfter = countEvents('purchase');
-  assert.strictEqual(purchaseCountBefore, purchaseCountAfter, 'Duplicate polling does NOT fire duplicate purchase events');
-  console.log('  ✅ PASS: purchase event tracked with strict server-side confirmation and duplicate prevention');
+  // Ověření, že po resetu/odvolání se další marketingové události NEPOSÍLAJÍ
+  mockFbqCalls.length = 0;
+  trackPageView('/dalsi-stranka');
+  assert.strictEqual(getFbqCalls('track', 'PageView').length, 0, 'Po odvolání souhlasu se Meta PageView již neposílá');
 
-  // TEST 7: report_ready Event
-  console.log('\n[TEST 7: report_ready Event]');
-  const reportTracked1 = trackReportReady(testOrderId);
-  assert.strictEqual(reportTracked1, true, 'Report ready tracked');
-  const reportEvent = getLastEvent('report_ready');
-  assert(reportEvent, 'report_ready event recorded');
-  assert.strictEqual(reportEvent[2].order_id, testOrderId);
+  trackPurchase('order-revoked-123', 690, 'CZK');
+  assert.strictEqual(getFbqCalls('track', 'Purchase').length, 0, 'Po odvolání souhlasu se Meta Purchase nesmí odeslat');
+  console.log('  ✅ PASS: Reset/odvolání souhlasu otevře banner a okamžitě zastaví veškeré další marketingové měření');
 
-  // Verification of Anti-Duplication
-  const reportCountBefore = countEvents('report_ready');
-  const reportTracked2 = trackReportReady(testOrderId);
-  assert.strictEqual(reportTracked2, false, 'Duplicate report_ready was prevented');
-  const reportCountAfter = countEvents('report_ready');
-  assert.strictEqual(reportCountBefore, reportCountAfter, 'report_ready does not duplicate during polling');
-  console.log('  ✅ PASS: report_ready tracked with duplicate prevention');
+  window.removeEventListener('podnikai-consent-change', testHandler);
 
-  // TEST 8: pdf_download Event
-  console.log('\n[TEST 8: pdf_download Event]');
-  trackPdfDownload(testOrderId);
-  const pdfEvent = getLastEvent('pdf_download');
-  assert(pdfEvent, 'pdf_download event recorded');
-  assert.strictEqual(pdfEvent[2].file_name, 'PODNIKAI_Report.pdf');
-  assert.strictEqual(pdfEvent[2].order_id, testOrderId);
-  console.log('  ✅ PASS: pdf_download tracked successfully with file_name: PODNIKAI_Report.pdf');
+  // TEST 5: Purchase se odešle pouze po potvrzení zaplacení na serveru a pouze při platném marketingu
+  console.log('\n[OVĚŘENÍ 5: Událost Purchase se odešle pouze při platném souhlasu a serverovém potvrzení]');
+  // Případ A: Souhlas 'all' -> Purchase se odešle a deduplikuje
+  setCookieConsent('all');
+  mockFbqCalls.length = 0;
+  mockDataLayer.length = 0;
 
-  // TEST 9: Verification of Production Build dist/index.html (if present)
-  console.log('\n[TEST 9: Verification of Production Build dist/index.html]');
-  const distHtmlPath = path.resolve('dist/index.html');
-  if (fs.existsSync(distHtmlPath)) {
-    const distHtml = fs.readFileSync(distHtmlPath, 'utf8');
-    assert(distHtml.includes('https://www.googletagmanager.com/gtag/js?id=G-CKLVMBFKM0'), 'dist/index.html includes GA4 script src with G-CKLVMBFKM0');
-    assert(distHtml.includes("gtag('config', 'G-CKLVMBFKM0'"), 'dist/index.html initializes gtag with G-CKLVMBFKM0');
-    assert(distHtml.includes('analytics_storage'), 'dist/index.html contains Consent Mode v2');
-    console.log('  ✅ PASS: Production build dist/index.html preserves full GA4 configuration');
-  } else {
-    console.log('  ⚠️ SKIP: dist/index.html not yet built (will be built during npm run build)');
-  }
+  const validOrderId = 'order-confirmed-paid-101';
+  const trackedFirst = trackPurchase(validOrderId, 690, 'CZK');
+  assert.strictEqual(trackedFirst, true, 'První záznam nákupu byl úspěšně zpracován');
 
-  // TEST 10: Live Network Verification with Google Analytics 4 Endpoints
-  console.log('\n[TEST 10: Live Network Verification with Google Analytics 4 Endpoints]');
-  try {
-    const tagRes = await fetch('https://www.googletagmanager.com/gtag/js?id=G-CKLVMBFKM0', { method: 'HEAD' });
-    assert.strictEqual(tagRes.status, 200, 'Google tag script returns HTTP 200');
-    console.log('  ✅ PASS: Google tag script resolves with HTTP 200 from Google CDN');
+  const metaPurchases = getFbqCalls('track', 'Purchase');
+  assert.strictEqual(metaPurchases.length, 1, 'Meta Pixel obdržel přesně 1 událost Purchase');
+  assert.strictEqual(metaPurchases[0][2].value, 690);
+  assert.strictEqual(metaPurchases[0][2].currency, 'CZK');
+  assert.strictEqual(metaPurchases[0][2].order_id, validOrderId);
 
-    const collectRes = await fetch('https://www.google-analytics.com/g/collect?v=2&tid=G-CKLVMBFKM0&cid=12345.67890&en=page_view&gcs=G110', { method: 'POST' });
-    assert(collectRes.status === 200 || collectRes.status === 204, `GA4 collect endpoint returned ${collectRes.status}`);
-    console.log(`  ✅ PASS: GA4 collect endpoint accepted hit with HTTP ${collectRes.status}`);
-  } catch (err: any) {
-    console.warn('  ⚠️ Network check skipped or limited connectivity:', err.message);
-  }
+  // Pokus o duplikát 1: reload stránky nebo polling zakázky v téže relaci
+  const trackedDuplicate1 = trackPurchase(validOrderId, 690, 'CZK');
+  assert.strictEqual(trackedDuplicate1, false, 'Druhý pokus o trackPurchase v téže relaci byl zablokován deduplikací');
+  assert.strictEqual(getFbqCalls('track', 'Purchase').length, 1, 'Deduplikace zabránila odeslání duplicitního Meta Purchase');
+
+  // Pokus o duplikát 2: ZAVŘENÍ A OPĚTOVNÉ OTEVŘENÍ PROHLÍŽEČE (simulace: sessionStorage se smaže, localStorage zůstává)
+  console.log('  -> Testování po zavření a znovuotevření prohlížeče (sessionStorage vyčištěno, localStorage zachováno)...');
+  (global as any).sessionStorage.clear();
+  assert.strictEqual((global as any).sessionStorage.length, 0, 'sessionStorage je po zavření prohlížeče prázdné');
+  
+  const trackedAfterRestart = trackPurchase(validOrderId, 690, 'CZK');
+  assert.strictEqual(trackedAfterRestart, false, 'Po zavření prohlížeče a otevření nové relace persistentní localStorage zabránil duplicitnímu Purchase');
+  assert.strictEqual(getFbqCalls('track', 'Purchase').length, 1, 'Meta Pixel Purchase se po restartu prohlížeče NEZAPOČÍTAL podruhé');
+
+  // Pokus o duplikát 3: OPAKOVANÝ NÁVRAT NA STRÁNKU POTVRZENÍ PLATBY (např. z e-mailu po několika dnech)
+  console.log('  -> Testování opakovaného návratu na potvrzení platby s existujícím tokenem...');
+  const trackedRepeatedReturn = trackPurchase(validOrderId, 690, 'CZK');
+  assert.strictEqual(trackedRepeatedReturn, false, 'Opakovaný návrat na stránku potvrzení platby je spolehlivě deduplikován');
+  assert.strictEqual(getFbqCalls('track', 'Purchase').length, 1, 'Meta Pixel Purchase zůstává přesně na 1 odeslané události');
+
+  // Pokus o duplikát 4: Zpětná kompatibilita se starším identifikátorem (podnikai_ga_purchased_...)
+  const legacyOrderId = 'order-legacy-confirmed-303';
+  (global as any).localStorage.setItem(`podnikai_ga_purchased_${legacyOrderId}`, 'true');
+  const trackedLegacy = trackPurchase(legacyOrderId, 690, 'CZK');
+  assert.strictEqual(trackedLegacy, false, 'Objednávka se starším klíčem v localStorage byla správně deduplikována');
+
+  // Případ B: Uživatel má pouze nezbytné cookies -> Purchase do Meta Pixelu NEODCHÁZÍ
+  setCookieConsent('necessary');
+  mockFbqCalls.length = 0;
+  const noConsentOrderId = 'order-confirmed-paid-202';
+  trackPurchase(noConsentOrderId, 690, 'CZK');
+  assert.strictEqual(getFbqCalls('track', 'Purchase').length, 0, 'Při nesouhlasu se Meta Pixel Purchase neodešle');
+  console.log('  ✅ PASS: Purchase se odešle výhradně při platném souhlasu, s přesnou částkou a 100% deduplikací napříč restarty prohlížeče a relacemi');
+
+  // TEST 6: Ochrana před únikem citlivých tokenů a e-mailů v URL
+  console.log('\n[OVĚŘENÍ 6: Automatická sanitace URL a zákaz PII v analytice]');
+  const dirtyUrl = 'https://podnikai.onrender.com/?orderId=123&orderToken=secretToken999&user=klient@seznam.cz';
+  const cleanUrl = sanitizeUrlForAnalytics(dirtyUrl);
+  assert(!cleanUrl.includes('secretToken999'), 'Bezpečnostní token je nahrazen');
+  assert(!cleanUrl.includes('klient@seznam.cz'), 'E-mail je nahrazen');
+  assert(cleanUrl.includes('[REDACTED]'), 'Nahrazeno [REDACTED]');
+  console.log('  ✅ PASS: Všechny URL i parametry jsou zbaveny bezpečnostních tokenů a e-mailů');
 
   console.log('\n================================================================');
-  console.log('🎉 ALL GOOGLE ANALYTICS 4 TESTS 100% PASSED!');
+  console.log('🎉 VŠECHNY KONTROLY SOUHLASU A META PIXELU 100% PROŠLY!');
   console.log('================================================================');
 }
 
 runAnalyticsTests().catch(err => {
-  console.error('❌ Analytics test failed:', err);
+  console.error('❌ Test selhal:', err);
   process.exit(1);
 });

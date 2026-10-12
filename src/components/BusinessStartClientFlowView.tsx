@@ -53,7 +53,8 @@ import {
   trackCheckoutStart, 
   trackPurchase, 
   trackReportReady, 
-  resetQuestionnaireStartState 
+  resetQuestionnaireStartState,
+  resetCookieConsent 
 } from '../utils/analytics';
 
 interface BusinessStartClientFlowViewProps {
@@ -2359,9 +2360,16 @@ export const BusinessStartClientFlowView: React.FC<BusinessStartClientFlowViewPr
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-500 max-w-xl mx-auto leading-relaxed">
-            PODNIKAI Business Start · 12 otázek zdarma · Individuální Business Report & 30denní plán za 690 Kč. Informační podklady negarantují budoucí zisk.
-          </p>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-500 max-w-xl mx-auto leading-relaxed">
+            <span>PODNIKAI Business Start · 12 otázek zdarma · Individuální Business Report & 30denní plán za 690 Kč.</span>
+            <button
+              type="button"
+              onClick={() => resetCookieConsent()}
+              className="text-slate-400 hover:text-blue-400 underline underline-offset-2 transition-colors cursor-pointer"
+            >
+              Nastavení cookies a soukromí
+            </button>
+          </div>
         </footer>
       </main>
     </div>

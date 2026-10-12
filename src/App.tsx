@@ -23,6 +23,7 @@ import { createActivityEntry, normalizeLeadStatusSeparation } from './utils/lead
 import { mergeLeadsWithExisting } from './utils/leadMerge';
 import { trackPageView } from './utils/analytics';
 import { SeoGuideView } from './components/seo/SeoGuideView';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
 
 const STORAGE_KEY_PROFILE = 'podnikai_user_profile';
 const STORAGE_KEY_PROJECT = 'podnikai_current_project';
@@ -500,6 +501,7 @@ export default function App() {
             onStartBusinessStart={() => navigateTo('/#business-start')}
           />
         </main>
+        <CookieConsentBanner />
       </div>
     );
   }
@@ -514,6 +516,7 @@ export default function App() {
         <main className="flex-1 relative z-10">
           <BusinessStartClientFlowView onNavigateGuide={(slug) => navigateTo(`/${slug}`)} />
         </main>
+        <CookieConsentBanner />
       </div>
     );
   }
@@ -701,6 +704,7 @@ export default function App() {
         onToggleAppMode={handleToggleAppMode}
       />
 
+      <CookieConsentBanner />
     </div>
   );
 }
