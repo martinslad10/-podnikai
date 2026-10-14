@@ -843,6 +843,7 @@ export interface BusinessStartOrder {
   paymentStatus: BusinessStartPaymentStatus;
   paymentProvider: 'stripe' | 'stripe_sandbox';
   paymentSessionId?: string;
+  paymentIntentId?: string;
   paidAt?: string;
   analysisStartedAt?: string;
   analysisCompletedAt?: string;
