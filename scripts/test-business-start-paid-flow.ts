@@ -100,57 +100,32 @@ async function runTests() {
   }
   console.log(`  ✅ PASS: Checkout initialized in mode: ${checkoutData.mode} (Price: 690 CZK, Discount: 65%)`);
 
-  // STEP 4: Webhook Security & Idempotency Testing
-  console.log('\n[STEP 4: Webhook Signature, Amount & Currency Validation]');
-  // 4a: Webhook without signature rejected
+  // STEP 4: Webhook Security Testing
+  console.log('\n[STEP 4: Webhook Security & Stripe Signature Enforcement]');
+  // 4a: Webhook without stripe-signature rejected
   const unsignedWebhookRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderId, amount: 690, currency: 'CZK' })
   });
   assert.strictEqual(unsignedWebhookRes.status, 400, 'Unsigned webhook rejected with 400');
-  console.log('  ✅ PASS: Unsigned webhook rejected with 400');
+  const unsignedData = await unsignedWebhookRes.json();
+  assert(unsignedData.error.includes('stripe-signature'), 'Error confirms stripe-signature is required');
+  console.log('  ✅ PASS: Unsigned webhook rejected with 400 (stripe-signature required)');
 
-  // 4b: Correctly signed webhook but with INCORRECT amount (e.g. old 1990 Kč instead of 690 Kč) rejected
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || process.env.ADMIN_SESSION_SECRET || 'podnikai_secure_webhook_secret_2026';
-  const wrongAmountPayload = JSON.stringify({
-    event: 'payment.succeeded',
-    orderId,
-    amount: 1990, // Wrong amount! Expecting 690
-    currency: 'CZK'
-  });
-  const wrongHmac = crypto.createHmac('sha256', webhookSecret).update(wrongAmountPayload).digest('hex');
-  const wrongAmountRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
+  // 4b: Legacy / alternate signature header x-podnikai-signature is strictly rejected
+  const legacyWebhookRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-podnikai-signature': wrongHmac
+      'x-podnikai-signature': '0000000000000000000000000000000000000000000000000000000000000000'
     },
-    body: wrongAmountPayload
+    body: JSON.stringify({ event: 'payment.succeeded', orderId, amount: 690, currency: 'CZK' })
   });
-  assert.strictEqual(wrongAmountRes.status, 400, 'Webhook with incorrect amount (1990 vs 690) rejected with 400');
-  const wrongAmountData = await wrongAmountRes.json();
-  assert(wrongAmountData.error.includes('690'), 'Error indicates expected amount is 690 Kč');
-  console.log('  ✅ PASS: Server strictly rejected webhook with incorrect amount (1990 vs 690 Kč)');
-
-  // 4c: Correctly signed webhook but with INCORRECT currency (e.g. USD instead of CZK) rejected
-  const wrongCurrencyPayload = JSON.stringify({
-    event: 'payment.succeeded',
-    orderId,
-    amount: 690,
-    currency: 'USD'
-  });
-  const wrongCurrHmac = crypto.createHmac('sha256', webhookSecret).update(wrongCurrencyPayload).digest('hex');
-  const wrongCurrencyRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-podnikai-signature': wrongCurrHmac
-    },
-    body: wrongCurrencyPayload
-  });
-  assert.strictEqual(wrongCurrencyRes.status, 400, 'Webhook with incorrect currency rejected with 400');
-  console.log('  ✅ PASS: Server strictly rejected webhook with incorrect currency (USD vs CZK)');
+  assert.strictEqual(legacyWebhookRes.status, 400, 'Legacy x-podnikai-signature rejected with 400');
+  const legacyData = await legacyWebhookRes.json();
+  assert(legacyData.error.includes('stripe-signature'), 'Webhook confirms only stripe-signature is accepted');
+  console.log('  ✅ PASS: Legacy x-podnikai-signature strictly rejected with HTTP 400');
 
   // STEP 5: Server-Side Verified Payment Simulation
   console.log('\n[STEP 5: Server-Side Verified Payment Simulation]');

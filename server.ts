@@ -59,7 +59,6 @@ export const BUSINESS_START_ORIGINAL_PRICE_CZK = 1990;
 export const BUSINESS_START_PRICE_CZK = 690;
 export const BUSINESS_START_DISCOUNT_PERCENT = 65;
 export const BUSINESS_START_CURRENCY = 'CZK';
-const WEBHOOK_SIGNING_SECRET = process.env.ADMIN_SESSION_SECRET || 'podnikai_secure_webhook_secret_2026';
 
 let stripeClient: Stripe | null = null;
 function getStripeClient(): Stripe | null {
@@ -4081,14 +4080,48 @@ app.post('/api/business-start/order/:orderId/checkout', async (req, res) => {
   }
 });
 
-// 4. POST Webhook Payment Notification (Stripe & Signed Webhooks)
+// 4. POST Webhook Payment Notification (Pure Stripe Webhook Only)
 app.post('/api/business-start/webhook', async (req: any, res) => {
   console.log('[Webhook] Incoming webhook request received.');
   try {
     const stripeSig = req.headers['stripe-signature'];
-    const podnikaiSig = req.headers['x-podnikai-signature'];
 
-    let eventType = '';
+    // 1. Strictly require stripe-signature header
+    if (!stripeSig || typeof stripeSig !== 'string') {
+      console.warn('[Webhook Warning] Webhook request received without stripe-signature header.');
+      return res.status(400).json({ error: 'Chybí podpis Stripe webhooku (stripe-signature)' });
+    }
+
+    // 2. Strictly require server-side STRIPE_WEBHOOK_SECRET
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret || webhookSecret.trim() === '') {
+      console.error('[Webhook Configuration Error] Stripe signature present but STRIPE_WEBHOOK_SECRET is not configured on server.');
+      return res.status(500).json({ error: 'Server configuration error: STRIPE_WEBHOOK_SECRET is missing.' });
+    }
+
+    // 3. Strictly require rawBody buffer for HMAC verification
+    if (!req.rawBody) {
+      console.error('[Webhook Error] Raw request body missing for Stripe signature verification.');
+      return res.status(400).json({ error: 'Chybí tělo požadavku pro ověření podpisu Stripe.' });
+    }
+
+    // 4. Cryptographic Stripe signature verification
+    let event: Stripe.Event;
+    try {
+      const stripe = getStripeClient();
+      event = (stripe?.webhooks || Stripe.webhooks).constructEvent(
+        req.rawBody,
+        stripeSig,
+        webhookSecret
+      );
+    } catch (sigErr: any) {
+      console.error('[Webhook Security] Stripe webhook signature verification failed.');
+      return res.status(400).json({ error: 'Neplatný podpis Stripe webhooku' });
+    }
+
+    const eventType = event.type;
+    console.log(`[Webhook] Stripe signature verified successfully. Event: ${eventType}`);
+
     let orderId = '';
     let amount = 0;
     let currency = '';
@@ -4099,107 +4132,48 @@ app.post('/api/business-start/webhook', async (req: any, res) => {
     let isDelayedPayment = false;
     let paymentStatus = '';
 
-    if (stripeSig) {
-      if (!process.env.STRIPE_WEBHOOK_SECRET) {
-        console.error('[Webhook Configuration Error] Stripe signature present but STRIPE_WEBHOOK_SECRET is not configured on server.');
-        return res.status(500).json({ error: 'Server configuration error: STRIPE_WEBHOOK_SECRET is missing.' });
-      }
+    if (eventType === 'checkout.session.completed' || eventType === 'checkout.session.async_payment_succeeded') {
+      const session = event.data.object as Stripe.Checkout.Session;
+      orderId = session.client_reference_id || (session.metadata && session.metadata.orderId) || '';
+      amount = session.amount_total ? session.amount_total / 100 : 0;
+      currency = (session.currency || 'CZK').toUpperCase();
+      paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+      paymentStatus = session.payment_status || '';
 
-      if (!req.rawBody) {
-        console.error('[Webhook Error] Raw request body missing for Stripe signature verification.');
-        return res.status(400).json({ error: 'Chybí tělo požadavku pro ověření podpisu Stripe.' });
-      }
-
-      let event: Stripe.Event;
-      try {
-        const stripe = getStripeClient();
-        event = (stripe?.webhooks || Stripe.webhooks).constructEvent(
-          req.rawBody,
-          stripeSig,
-          process.env.STRIPE_WEBHOOK_SECRET
-        );
-      } catch (sigErr: any) {
-        console.error('[Webhook Security] Stripe webhook signature verification failed.');
-        return res.status(400).json({ error: 'Neplatný podpis Stripe webhooku' });
-      }
-
-      eventType = event.type;
-      console.log(`[Webhook] Stripe signature verified successfully. Event: ${eventType}`);
-
-      if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
-        const session = event.data.object as Stripe.Checkout.Session;
-        orderId = session.client_reference_id || (session.metadata && session.metadata.orderId) || '';
-        amount = session.amount_total ? session.amount_total / 100 : 0;
-        currency = (session.currency || 'CZK').toUpperCase();
-        paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
-        paymentStatus = session.payment_status || '';
-
-        // CRITICAL CHECK: Verify actual payment_status!
-        if (session.payment_status === 'paid') {
-          isPaymentSuccess = true;
-        } else {
-          // Delayed, asynchronous, or incomplete payment (e.g. payment_status === 'unpaid')
-          isDelayedPayment = true;
-        }
-      } else if (event.type === 'payment_intent.payment_failed') {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        orderId = (paymentIntent.metadata && paymentIntent.metadata.orderId) || '';
-        paymentIntentId = paymentIntent.id;
-        amount = paymentIntent.amount ? paymentIntent.amount / 100 : 0;
-        currency = (paymentIntent.currency || 'CZK').toUpperCase();
-        failureReason = paymentIntent.last_payment_error?.message || 'Platba kartou byla zamítnuta';
-        isPaymentFailure = true;
-
-        // If orderId was not directly in metadata, look up in persisted clients by paymentIntentId
-        if (!orderId && paymentIntentId) {
-          const clients = await readPersistedBusinessStartClients();
-          const matched = clients.find(c => c.order?.paymentIntentId === paymentIntentId || c.order?.paymentSessionId === paymentIntentId);
-          if (matched?.order) {
-            orderId = matched.order.id;
-          }
-        }
-      } else if (event.type === 'checkout.session.expired' || event.type === 'checkout.session.async_payment_failed') {
-        const session = event.data.object as Stripe.Checkout.Session;
-        orderId = session.client_reference_id || (session.metadata && session.metadata.orderId) || '';
-        paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
-        failureReason = event.type === 'checkout.session.expired' ? 'Platební relace vypršela' : 'Asynchronní platba selhala';
-        isPaymentFailure = true;
-      } else {
-        // Other informational Stripe events (e.g. payment_intent.created, charge.succeeded)
-        console.log(`[Webhook] Unhandled Stripe event type: ${eventType}. Acknowledging with 200.`);
-        return res.json({ received: true, ignored: true, eventType });
-      }
-    } else if (podnikaiSig) {
-      // Internal HMAC verified webhook (used for sandbox simulation and integration tests)
-      const hmac = crypto.createHmac('sha256', WEBHOOK_SIGNING_SECRET);
-      hmac.update(req.rawBody || JSON.stringify(req.body));
-      const expected = hmac.digest('hex');
-      if (podnikaiSig !== expected) {
-        console.error('[Webhook Security] PodnikAI HMAC signature verification failed.');
-        return res.status(400).json({ error: 'Neplatný kryptografický podpis webhooku (HMAC verification failed)' });
-      }
-
-      eventType = req.body.event || 'payment.succeeded';
-      orderId = req.body.orderId || '';
-      amount = req.body.amount || 0;
-      currency = req.body.currency || 'CZK';
-      paymentStatus = req.body.payment_status || req.body.paymentStatus || '';
-      console.log(`[Webhook] PodnikAI HMAC signature verified successfully. Event: ${eventType}`);
-
-      if (eventType === 'checkout.session.completed' && paymentStatus === 'unpaid') {
-        isDelayedPayment = true;
-      } else if (eventType === 'payment.succeeded' || eventType === 'checkout.session.completed') {
+      // CRITICAL CHECK: Verify actual payment_status!
+      if (session.payment_status === 'paid') {
         isPaymentSuccess = true;
-      } else if (eventType === 'payment.failed' || eventType === 'checkout.session.expired' || eventType === 'payment_intent.payment_failed') {
-        isPaymentFailure = true;
-        failureReason = req.body.failureReason || 'Platba byla zamítnuta';
       } else {
-        console.log(`[Webhook] Unhandled PodnikAI event type: ${eventType}. Acknowledging with 200.`);
-        return res.json({ received: true, ignored: true, eventType });
+        // Delayed, asynchronous, or incomplete payment (e.g. payment_status === 'unpaid')
+        isDelayedPayment = true;
       }
+    } else if (eventType === 'payment_intent.payment_failed') {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      orderId = (paymentIntent.metadata && paymentIntent.metadata.orderId) || '';
+      paymentIntentId = paymentIntent.id;
+      amount = paymentIntent.amount ? paymentIntent.amount / 100 : 0;
+      currency = (paymentIntent.currency || 'CZK').toUpperCase();
+      failureReason = paymentIntent.last_payment_error?.message || 'Platba kartou byla zamítnuta';
+      isPaymentFailure = true;
+
+      // If orderId was not directly in metadata, look up in persisted clients by paymentIntentId or paymentSessionId
+      if (!orderId && paymentIntentId) {
+        const clients = await readPersistedBusinessStartClients();
+        const matched = clients.find(c => c.order?.paymentIntentId === paymentIntentId || c.order?.paymentSessionId === paymentIntentId);
+        if (matched?.order) {
+          orderId = matched.order.id;
+        }
+      }
+    } else if (eventType === 'checkout.session.expired' || eventType === 'checkout.session.async_payment_failed') {
+      const session = event.data.object as Stripe.Checkout.Session;
+      orderId = session.client_reference_id || (session.metadata && session.metadata.orderId) || '';
+      paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+      failureReason = eventType === 'checkout.session.expired' ? 'Platební relace vypršela' : 'Asynchronní platba selhala';
+      isPaymentFailure = true;
     } else {
-      console.warn('[Webhook Warning] Webhook request received without signature header.');
-      return res.status(400).json({ error: 'Chybí podpis webhooku (stripe-signature nebo x-podnikai-signature)' });
+      // Other informational Stripe events (e.g. payment_intent.created, charge.succeeded)
+      console.log(`[Webhook] Unhandled Stripe event type: ${eventType}. Acknowledging with 200.`);
+      return res.json({ received: true, ignored: true, eventType });
     }
 
     // Validate that orderId was resolved
@@ -4220,18 +4194,28 @@ app.post('/api/business-start/webhook', async (req: any, res) => {
 
     // Case 1: Delayed or Incomplete Payment (e.g. checkout.session.completed with payment_status === 'unpaid')
     if (isDelayedPayment) {
-      console.log(`[Webhook] Order ${orderId} checkout session is not paid (payment_status: '${paymentStatus}'). Keeping PAYMENT_PENDING.`);
-      if (client.order.paymentStatus !== 'PAID') {
-        client.order.status = 'PAYMENT_PENDING';
-        client.order.paymentStatus = 'PAYMENT_PENDING';
-        client.paymentStatus = 'PAYMENT_PENDING';
-        client.orderStatus = 'PAYMENT_PENDING';
-        if (paymentIntentId) {
-          client.order.paymentIntentId = paymentIntentId;
-        }
-        client.updatedAt = new Date().toISOString();
-        await writePersistedBusinessStartClients(clients);
+      console.log(`[Webhook] Order ${orderId} checkout session is not paid (payment_status: '${paymentStatus}').`);
+      // If already paid, do not overwrite!
+      if (client.order.paymentStatus === 'PAID') {
+        console.log(`[Webhook] Order ${orderId} is already PAID. Ignoring delayed payment event.`);
+        return res.json({
+          received: true,
+          orderId,
+          ignored: true,
+          reason: 'order_already_paid',
+          status: client.order.status
+        });
       }
+      client.order.status = 'PAYMENT_PENDING';
+      client.order.paymentStatus = 'PAYMENT_PENDING';
+      client.paymentStatus = 'PAYMENT_PENDING';
+      client.orderStatus = 'PAYMENT_PENDING';
+      if (paymentIntentId) {
+        client.order.paymentIntentId = paymentIntentId;
+      }
+      client.updatedAt = new Date().toISOString();
+      await writePersistedBusinessStartClients(clients);
+
       return res.json({
         received: true,
         orderId,
@@ -4241,7 +4225,7 @@ app.post('/api/business-start/webhook', async (req: any, res) => {
       });
     }
 
-    // Case 2: Payment Failure (e.g. payment_intent.payment_failed, checkout.session.expired)
+    // Case 2: Payment Failure (e.g. payment_intent.payment_failed, checkout.session.expired, checkout.session.async_payment_failed)
     if (isPaymentFailure) {
       const failResult = await handleBusinessStartPaymentFailed(orderId, failureReason);
       if (failResult.ignored) {
@@ -4261,7 +4245,7 @@ app.post('/api/business-start/webhook', async (req: any, res) => {
       });
     }
 
-    // Case 3: Successful Payment (checkout.session.completed with payment_status === 'paid')
+    // Case 3: Successful Payment (checkout.session.completed or checkout.session.async_payment_succeeded with payment_status === 'paid')
     if (isPaymentSuccess) {
       const result = await processBusinessStartPaymentSucceeded(orderId, amount, currency, paymentIntentId);
       console.log(`[Webhook] Order ${orderId} successfully processed. Final status: ${result.status}`);
@@ -4276,7 +4260,7 @@ app.post('/api/business-start/webhook', async (req: any, res) => {
   }
 });
 
-// 5. POST Sandbox Payment Simulator (Authentic Server-side signed simulation)
+// 5. POST Sandbox Payment Simulator (Authentic Server-side local simulation)
 app.post('/api/business-start/sandbox/simulate-payment', async (req, res) => {
   try {
     const { orderId, orderToken, simulateOutcome = 'SUCCESS' } = req.body;
@@ -4294,20 +4278,9 @@ app.post('/api/business-start/sandbox/simulate-payment', async (req, res) => {
       return res.status(403).json({ error: 'Neplatný bezpečnostní token objednávky' });
     }
 
-    // Construct genuine payload and sign with HMAC
-    const payload = JSON.stringify({
-      event: simulateOutcome === 'SUCCESS' ? 'payment.succeeded' : 'payment.failed',
-      orderId: client.order.id,
-      amount: BUSINESS_START_PRICE_CZK,
-      currency: BUSINESS_START_CURRENCY,
-      timestamp: new Date().toISOString()
-    });
-
-    const sig = crypto.createHmac('sha256', WEBHOOK_SIGNING_SECRET).update(payload).digest('hex');
-
     if (simulateOutcome === 'SUCCESS') {
       const result = await processBusinessStartPaymentSucceeded(client.order.id, BUSINESS_START_PRICE_CZK, BUSINESS_START_CURRENCY);
-      return res.json({ success: true, outcome: 'SUCCESS', signature: sig, ...result });
+      return res.json({ success: true, outcome: 'SUCCESS', ...result });
     } else {
       client.order.status = 'PAYMENT_FAILED';
       client.order.paymentStatus = 'PAYMENT_FAILED';
