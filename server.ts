@@ -60,6 +60,10 @@ export const BUSINESS_START_PRICE_CZK = 690;
 export const BUSINESS_START_DISCOUNT_PERCENT = 65;
 export const BUSINESS_START_CURRENCY = 'CZK';
 
+export function isProductionEnvironment(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+}
+
 let stripeClient: Stripe | null = null;
 function getStripeClient(): Stripe | null {
   const stripeSecret = process.env.STRIPE_SECRET_KEY;
@@ -3725,9 +3729,36 @@ app.post(['/api/admin/clients/:id/analyze', '/api/admin/business-start/clients/:
 // BUSINESS START – AUTOMATED PAID FLOW (PUBLIC CLIENT & WEBHOOK API)
 // =============================================================================
 
+// In-memory per-order mutex to serialize concurrent payment webhook requests
+const orderProcessingLocks = new Map<string, Promise<void>>();
+
+async function acquireOrderProcessingLock(orderId: string): Promise<() => void> {
+  while (orderProcessingLocks.has(orderId)) {
+    try {
+      await orderProcessingLocks.get(orderId);
+    } catch {
+      // ignore previous errors
+    }
+  }
+
+  let releaseLock: () => void = () => {};
+  const lockPromise = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+
+  orderProcessingLocks.set(orderId, lockPromise);
+
+  return () => {
+    if (orderProcessingLocks.get(orderId) === lockPromise) {
+      orderProcessingLocks.delete(orderId);
+    }
+    releaseLock();
+  };
+}
+
 // Internal Helper: Process Payment Succeeded with Strict Idempotency & Validation
 async function processBusinessStartPaymentSucceeded(orderId: string, amount: number, currency: string, paymentIntentId?: string) {
-  // 1. Verify amount & currency
+  // 1. Verify amount & currency immediately
   if (amount !== BUSINESS_START_PRICE_CZK && amount !== BUSINESS_START_PRICE_CZK * 100) {
     throw new Error(`Neplatná částka platby (${amount}). Očekáváno přesně ${BUSINESS_START_PRICE_CZK} Kč.`);
   }
@@ -3735,113 +3766,124 @@ async function processBusinessStartPaymentSucceeded(orderId: string, amount: num
     throw new Error(`Neplatná měna platby (${currency}). Očekáváno ${BUSINESS_START_CURRENCY}.`);
   }
 
-  // 2. Find client & order
-  const clients = await readPersistedBusinessStartClients();
-  const idx = clients.findIndex(c => c.order?.id === orderId || c.id === orderId);
-  if (idx === -1) {
-    throw new Error(`Objednávka ${orderId} nebyla nalezena`);
-  }
-
-  const client = clients[idx];
-  if (!client.order) {
-    throw new Error(`Objednávka pro klienta ${client.id} neexistuje`);
-  }
-
-  // 3. IDEMPOTENCY CHECK: If already analyzing or report ready, do not rerun analysis
-  if (
-    client.order.paymentStatus === 'PAID' && (
-      client.order.status === 'PAID' ||
-      client.order.status === 'ANALYZING' ||
-      client.order.status === 'REPORT_READY' ||
-      client.order.status === 'PDF_READY'
-    )
-  ) {
-    console.log(`[Webhook Idempotency] Order ${orderId} already processed (status: ${client.order.status}). Skipping duplicate analysis.`);
-    return { alreadyProcessed: true, order: client.order, status: client.order.status };
-  }
-
-  // 4. Update status to PAID & ANALYZING
-  const now = new Date().toISOString();
-  client.order.paymentStatus = 'PAID';
-  client.order.paidAt = now;
-  client.order.status = 'ANALYZING';
-  client.order.analysisStartedAt = now;
-  if (paymentIntentId) {
-    client.order.paymentIntentId = paymentIntentId;
-  }
-  client.paymentStatus = 'PAID';
-  client.orderStatus = 'ANALYZING';
-  client.status = 'analysis';
-  client.updatedAt = now;
-  clients[idx] = client;
-  await writePersistedBusinessStartClients(clients);
-
-  console.log(`[Webhook] Order ${orderId} marked as PAID. Starting AI analysis...`);
-
-  // 5. Trigger Canonical Analysis (Automatic Execution)
+  // 2. Acquire per-order lock to strictly serialize concurrent requests
+  const releaseLock = await acquireOrderProcessingLock(orderId);
   try {
-    const analysis = await runCanonicalBusinessStartAnalysis(client.questionnaire);
-    client.analysis = analysis;
-    client.status = 'control';
-    client.order.status = 'REPORT_READY';
-    client.order.analysisCompletedAt = new Date().toISOString();
-    client.orderStatus = 'REPORT_READY';
-    client.reportLastGeneratedAt = new Date().toISOString();
-    client.updatedAt = new Date().toISOString();
+    // 3. Find client & order (freshly read under lock)
+    const clients = await readPersistedBusinessStartClients();
+    const idx = clients.findIndex(c => c.order?.id === orderId || c.id === orderId);
+    if (idx === -1) {
+      throw new Error(`Objednávka ${orderId} nebyla nalezena`);
+    }
+
+    const client = clients[idx];
+    if (!client.order) {
+      throw new Error(`Objednávka pro klienta ${client.id} neexistuje`);
+    }
+
+    // 4. IDEMPOTENCY CHECK under lock: If already analyzing or report ready, do not rerun analysis
+    if (
+      client.order.paymentStatus === 'PAID' && (
+        client.order.status === 'PAID' ||
+        client.order.status === 'ANALYZING' ||
+        client.order.status === 'REPORT_READY' ||
+        client.order.status === 'PDF_READY'
+      )
+    ) {
+      console.log(`[Webhook Idempotency] Order ${orderId} already processed (status: ${client.order.status}). Skipping duplicate analysis.`);
+      return { alreadyProcessed: true, order: client.order, status: client.order.status };
+    }
+
+    // 5. Update status to PAID & ANALYZING and persist to disk BEFORE starting analysis
+    const now = new Date().toISOString();
+    client.order.paymentStatus = 'PAID';
+    client.order.paidAt = now;
+    client.order.status = 'ANALYZING';
+    client.order.analysisStartedAt = now;
+    if (paymentIntentId) {
+      client.order.paymentIntentId = paymentIntentId;
+    }
+    client.paymentStatus = 'PAID';
+    client.orderStatus = 'ANALYZING';
+    client.status = 'analysis';
+    client.updatedAt = now;
     clients[idx] = client;
     await writePersistedBusinessStartClients(clients);
 
-    console.log(`[Webhook] Order ${orderId} analysis completed successfully. Status: REPORT_READY.`);
-    return { success: true, order: client.order, status: 'REPORT_READY' };
-  } catch (analysisErr: any) {
-    client.order.status = 'ANALYSIS_FAILED';
-    client.order.errorMessage = analysisErr.message || 'Chyba při běhu Business Start engine';
-    client.order.retryCount = (client.order.retryCount || 0) + 1;
-    client.orderStatus = 'ANALYSIS_FAILED';
-    client.updatedAt = new Date().toISOString();
-    clients[idx] = client;
-    await writePersistedBusinessStartClients(clients);
-    console.error(`[Webhook] Order ${orderId} analysis failed: ${analysisErr.message}`);
-    throw analysisErr;
+    console.log(`[Webhook] Order ${orderId} marked as PAID. Starting AI analysis...`);
+
+    // 6. Trigger Canonical Analysis (Automatic Execution)
+    try {
+      const analysis = await runCanonicalBusinessStartAnalysis(client.questionnaire);
+      client.analysis = analysis;
+      client.status = 'control';
+      client.order.status = 'REPORT_READY';
+      client.order.analysisCompletedAt = new Date().toISOString();
+      client.orderStatus = 'REPORT_READY';
+      client.reportLastGeneratedAt = new Date().toISOString();
+      client.updatedAt = new Date().toISOString();
+      clients[idx] = client;
+      await writePersistedBusinessStartClients(clients);
+
+      console.log(`[Webhook] Order ${orderId} analysis completed successfully. Status: REPORT_READY.`);
+      return { success: true, order: client.order, status: 'REPORT_READY' };
+    } catch (analysisErr: any) {
+      client.order.status = 'ANALYSIS_FAILED';
+      client.order.errorMessage = analysisErr.message || 'Chyba při běhu Business Start engine';
+      client.order.retryCount = (client.order.retryCount || 0) + 1;
+      client.orderStatus = 'ANALYSIS_FAILED';
+      client.updatedAt = new Date().toISOString();
+      clients[idx] = client;
+      await writePersistedBusinessStartClients(clients);
+      console.error(`[Webhook] Order ${orderId} analysis failed: ${analysisErr.message}`);
+      throw analysisErr;
+    }
+  } finally {
+    releaseLock();
   }
 }
 
 // Internal Helper: Handle Payment Failure with Late Event Protection
 async function handleBusinessStartPaymentFailed(orderId: string, failureReason: string) {
-  const clients = await readPersistedBusinessStartClients();
-  const idx = clients.findIndex(c => c.order?.id === orderId || c.id === orderId);
-  if (idx === -1 || !clients[idx].order) {
-    console.error(`[Webhook] Order ${orderId} not found for payment failure event.`);
-    return { found: false };
+  const releaseLock = await acquireOrderProcessingLock(orderId);
+  try {
+    const clients = await readPersistedBusinessStartClients();
+    const idx = clients.findIndex(c => c.order?.id === orderId || c.id === orderId);
+    if (idx === -1 || !clients[idx].order) {
+      console.error(`[Webhook] Order ${orderId} not found for payment failure event.`);
+      return { found: false };
+    }
+
+    const client = clients[idx];
+    const order = client.order!;
+
+    // CRITICAL CHECK: Prevent a late failure event from overwriting an already paid order!
+    if (
+      order.paymentStatus === 'PAID' ||
+      order.status === 'PAID' ||
+      order.status === 'ANALYZING' ||
+      order.status === 'REPORT_READY' ||
+      order.status === 'PDF_READY'
+    ) {
+      console.log(`[Webhook] Order ${orderId} is already PAID (status: ${order.status}). Ignoring late failure event.`);
+      return { found: true, ignored: true, reason: 'order_already_paid', status: order.status };
+    }
+
+    const now = new Date().toISOString();
+    order.status = 'PAYMENT_FAILED';
+    order.paymentStatus = 'PAYMENT_FAILED';
+    order.errorMessage = failureReason ? failureReason.slice(0, 250) : 'Platba byla zamítnuta nebo selhala';
+    client.paymentStatus = 'PAYMENT_FAILED';
+    client.orderStatus = 'PAYMENT_FAILED';
+    client.updatedAt = now;
+    clients[idx] = client;
+    await writePersistedBusinessStartClients(clients);
+
+    console.log(`[Webhook] Order ${orderId} marked as PAYMENT_FAILED: ${order.errorMessage}`);
+    return { found: true, ignored: false, status: 'PAYMENT_FAILED' };
+  } finally {
+    releaseLock();
   }
-
-  const client = clients[idx];
-  const order = client.order!;
-
-  // CRITICAL CHECK: Prevent a late failure event from overwriting an already paid order!
-  if (
-    order.paymentStatus === 'PAID' ||
-    order.status === 'PAID' ||
-    order.status === 'ANALYZING' ||
-    order.status === 'REPORT_READY' ||
-    order.status === 'PDF_READY'
-  ) {
-    console.log(`[Webhook] Order ${orderId} is already PAID (status: ${order.status}). Ignoring late failure event.`);
-    return { found: true, ignored: true, reason: 'order_already_paid', status: order.status };
-  }
-
-  const now = new Date().toISOString();
-  order.status = 'PAYMENT_FAILED';
-  order.paymentStatus = 'PAYMENT_FAILED';
-  order.errorMessage = failureReason ? failureReason.slice(0, 250) : 'Platba byla zamítnuta nebo selhala';
-  client.paymentStatus = 'PAYMENT_FAILED';
-  client.orderStatus = 'PAYMENT_FAILED';
-  client.updatedAt = now;
-  clients[idx] = client;
-  await writePersistedBusinessStartClients(clients);
-
-  console.log(`[Webhook] Order ${orderId} marked as PAYMENT_FAILED: ${order.errorMessage}`);
-  return { found: true, ignored: false, status: 'PAYMENT_FAILED' };
 }
 
 // 1. POST Create or Update Draft Order (12 Questions Intake)
@@ -4013,58 +4055,81 @@ app.post('/api/business-start/order/:orderId/checkout', async (req, res) => {
     client.updatedAt = new Date().toISOString();
     await writePersistedBusinessStartClients(clients);
 
+    const isProd = isProductionEnvironment();
     const stripe = getStripeClient();
+
     if (stripe) {
-      const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-      const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
-      const appUrl = (process.env.APP_URL || `${proto}://${host}`).replace(/\/$/, '');
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: 'czk',
-              product_data: {
-                name: 'PODNIKAI Business Start',
-                description: 'Individuální podnikatelská analýza a Business Report (Startovací sleva 65 % z původních 1 990 Kč)',
+      try {
+        const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+        const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
+        const appUrl = (process.env.APP_URL || `${proto}://${host}`).replace(/\/$/, '');
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [
+            {
+              price_data: {
+                currency: 'czk',
+                product_data: {
+                  name: 'PODNIKAI Business Start',
+                  description: 'Individuální podnikatelská analýza a Business Report (Startovací sleva 65 % z původních 1 990 Kč)',
+                },
+                unit_amount: BUSINESS_START_PRICE_CZK * 100, // 690 Kč v haléřích (69 000)
               },
-              unit_amount: BUSINESS_START_PRICE_CZK * 100, // 690 Kč v haléřích (69 000)
+              quantity: 1,
             },
-            quantity: 1,
-          },
-        ],
-        mode: 'payment',
-        client_reference_id: client.order!.id,
-        customer_email: client.questionnaire.clientEmail || undefined,
-        metadata: {
-          orderId: client.order!.id,
-          orderToken: client.order!.orderToken
-        },
-        payment_intent_data: {
+          ],
+          mode: 'payment',
+          client_reference_id: client.order!.id,
+          customer_email: client.questionnaire.clientEmail || undefined,
           metadata: {
-            orderId: client.order!.id
-          }
-        },
-        success_url: `${appUrl}/#business-start?orderId=${client.order!.id}&token=${client.order!.orderToken}&payment=success`,
-        cancel_url: `${appUrl}/#business-start?orderId=${client.order!.id}&token=${client.order!.orderToken}&payment=cancel`,
-      });
+            orderId: client.order!.id,
+            orderToken: client.order!.orderToken
+          },
+          payment_intent_data: {
+            metadata: {
+              orderId: client.order!.id
+            }
+          },
+          success_url: `${appUrl}/#business-start?orderId=${client.order!.id}&token=${client.order!.orderToken}&payment=success`,
+          cancel_url: `${appUrl}/#business-start?orderId=${client.order!.id}&token=${client.order!.orderToken}&payment=cancel`,
+        });
 
-      client.order!.paymentSessionId = session.id;
-      if (typeof session.payment_intent === 'string') {
-        client.order!.paymentIntentId = session.payment_intent;
+        client.order!.paymentSessionId = session.id;
+        if (typeof session.payment_intent === 'string') {
+          client.order!.paymentIntentId = session.payment_intent;
+        }
+        await writePersistedBusinessStartClients(clients);
+
+        return res.json({
+          success: true,
+          mode: 'stripe_hosted',
+          checkoutUrl: session.url,
+          sessionId: session.id,
+          order: client.order
+        });
+      } catch (stripeErr: any) {
+        console.error('[Checkout Error] Stripe session creation failed:', stripeErr.message);
+        if (isProd) {
+          return res.status(503).json({
+            error: 'Platební brána není momentálně dostupná. Zkuste to prosím později.',
+            code: 'STRIPE_SERVICE_UNAVAILABLE'
+          });
+        }
+        throw stripeErr;
       }
-      await writePersistedBusinessStartClients(clients);
+    }
 
-      return res.json({
-        success: true,
-        mode: 'stripe_hosted',
-        checkoutUrl: session.url,
-        sessionId: session.id,
-        order: client.order
+    // CRITICAL SECURITY ENFORCEMENT:
+    // In production, automatic switch to sandbox or unconfirmed payments is STRICTLY FORBIDDEN!
+    if (isProd) {
+      console.error('[Checkout Error] STRIPE_SECRET_KEY is missing or invalid in production environment.');
+      return res.status(503).json({
+        error: 'Platební brána není v produkčním prostředí nakonfigurována (chybí STRIPE_SECRET_KEY). Zkuste to prosím později.',
+        code: 'STRIPE_NOT_CONFIGURED'
       });
     }
 
-    // Sandbox / Test Mode (no live Stripe keys configured yet)
+    // Sandbox / Test Mode (strictly allowed ONLY outside of production when no live Stripe keys are configured)
     return res.json({
       success: true,
       mode: 'sandbox',
@@ -4262,6 +4327,14 @@ app.post('/api/business-start/webhook', async (req: any, res) => {
 
 // 5. POST Sandbox Payment Simulator (Authentic Server-side local simulation)
 app.post('/api/business-start/sandbox/simulate-payment', async (req, res) => {
+  // CRITICAL SECURITY ENFORCEMENT:
+  // In production, payment simulation is strictly forbidden.
+  // This check MUST occur at the very beginning before loading order or changing any state!
+  if (isProductionEnvironment()) {
+    console.warn('[Security] Refused simulate-payment in production environment. Returning 404.');
+    return res.status(404).json({ error: 'Endpoint nebyl nalezen' });
+  }
+
   try {
     const { orderId, orderToken, simulateOutcome = 'SUCCESS' } = req.body;
     if (!orderId || !orderToken) {

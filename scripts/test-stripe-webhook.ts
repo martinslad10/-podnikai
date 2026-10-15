@@ -16,6 +16,24 @@ function signStripeEvent(payload: string, secret: string = TEST_WEBHOOK_SECRET):
   });
 }
 
+const nativeFetch = globalThis.fetch;
+// Helper with Connection: close and retry for robust local integration testing
+async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
+  let attempts = 0;
+  while (attempts < 3) {
+    attempts++;
+    try {
+      const headers = new Headers(init?.headers);
+      headers.set('Connection', 'close');
+      return await nativeFetch(url, { ...init, headers });
+    } catch (err: any) {
+      if (attempts >= 3) throw err;
+      await new Promise(r => setTimeout(r, 150));
+    }
+  }
+  throw new Error('Unreachable');
+}
+
 // Helper to create a draft order on a given server base URL
 async function createTestDraftOrder(baseUrl: string, nameSuffix: string = '') {
   const intakePayload = {
@@ -36,7 +54,7 @@ async function createTestDraftOrder(baseUrl: string, nameSuffix: string = '') {
     }
   };
 
-  const res = await fetch(`${baseUrl}/api/business-start/order/draft`, {
+  const res = await safeFetch(`${baseUrl}/api/business-start/order/draft`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(intakePayload)
@@ -54,7 +72,7 @@ async function waitForServerReady(url: string, timeoutMs: number = 10000): Promi
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(`${url}/api/health`);
+      const res = await safeFetch(`${url}/api/health`);
       if (res.status === 200) {
         return true;
       }
@@ -81,7 +99,7 @@ async function runStripeWebhookTests() {
 
     // TEST 1: Missing signature header rejected with HTTP 400
     console.log('\n[TEST 1: Chybějící podpis Stripe webhooku odmítnut s HTTP 400]');
-    const unsignedRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
+    const unsignedRes = await safeFetch(`${BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: 'evt_test_1', type: 'checkout.session.completed' })
@@ -93,7 +111,7 @@ async function runStripeWebhookTests() {
 
     // TEST 2: Legacy signature header (x-podnikai-signature) is strictly rejected
     console.log('\n[TEST 2: Alternativní hlavička x-podnikai-signature je striktně odmítnuta]');
-    const legacySigRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
+    const legacySigRes = await safeFetch(`${BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -108,7 +126,7 @@ async function runStripeWebhookTests() {
 
     // TEST 3: Stripe signature when STRIPE_WEBHOOK_SECRET is missing on server
     console.log('\n[TEST 3: Stripe signature bez nakonfigurovaného STRIPE_WEBHOOK_SECRET]');
-    const missingSecretRes = await fetch(`${BASE_URL}/api/business-start/webhook`, {
+    const missingSecretRes = await safeFetch(`${BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -120,6 +138,38 @@ async function runStripeWebhookTests() {
     const missingSecretData = await missingSecretRes.json();
     assert(missingSecretData.error.includes('STRIPE_WEBHOOK_SECRET is missing'), 'Chybová zpráva jasně identifikuje chybějící secret');
     console.log('  ✅ PASS: Webhook bezpečně odmítl Stripe požadavek při chybějícím server secretu s HTTP 500');
+
+    // TEST 3b: Ve vývojovém/testovacím prostředí lze sandbox používat podle dosavadních pravidel
+    console.log('\n[TEST 3b: Sandbox ve vývojovém režimu funguje korektně]');
+    const devDraft = await createTestDraftOrder(BASE_URL, 'Dev Sandbox');
+    const devCheckoutRes = await safeFetch(`${BASE_URL}/api/business-start/order/${devDraft.orderId}/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-order-token': devDraft.orderToken },
+      body: JSON.stringify({ orderToken: devDraft.orderToken })
+    });
+    assert.strictEqual(devCheckoutRes.status, 200, 'Checkout ve vývojovém režimu vrací HTTP 200');
+    const devCheckoutData = await devCheckoutRes.json();
+    assert.strictEqual(devCheckoutData.mode, 'sandbox', 'Ve vývojovém režimu bez živého Stripe klíče je aktivní mode: "sandbox"');
+
+    // Ověření simulace selhání i úspěchu v dev prostředí
+    const devSimFailRes = await safeFetch(`${BASE_URL}/api/business-start/sandbox/simulate-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: devDraft.orderId, orderToken: devDraft.orderToken, simulateOutcome: 'FAILURE' })
+    });
+    assert.strictEqual(devSimFailRes.status, 200, 'Simulace selhání v dev vrací HTTP 200');
+    const devSimFailData = await devSimFailRes.json();
+    assert.strictEqual(devSimFailData.status, 'PAYMENT_FAILED', 'Stav objednávky po simulovaném selhání je PAYMENT_FAILED');
+
+    const devSimSuccessRes = await safeFetch(`${BASE_URL}/api/business-start/sandbox/simulate-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: devDraft.orderId, orderToken: devDraft.orderToken, simulateOutcome: 'SUCCESS' })
+    });
+    assert.strictEqual(devSimSuccessRes.status, 200, 'Simulace úspěchu v dev vrací HTTP 200');
+    const devSimSuccessData = await devSimSuccessRes.json();
+    assert.strictEqual(devSimSuccessData.status, 'REPORT_READY', 'Stav objednávky po simulovaném úspěchu je REPORT_READY');
+    console.log('  ✅ PASS: Ve vývojovém/testovacím prostředí sandbox a simulate-payment plně fungují');
 
     // -------------------------------------------------------------------------
     // SECTION B: Tests on isolated server with configured STRIPE_WEBHOOK_SECRET
@@ -136,10 +186,53 @@ async function runStripeWebhookTests() {
       },
       stdio: 'pipe'
     });
+    testServerChild.stdout?.on('data', d => console.log('child stdout:', d.toString()));
+    testServerChild.stderr?.on('data', d => console.error('child stderr:', d.toString()));
+    testServerChild.on('error', (err) => {
+      console.error('testServerChild error:', err);
+    });
+    testServerChild.on('exit', (code, sig) => {
+      console.log(`testServerChild exited with code ${code}, signal ${sig}`);
+    });
 
     const isReady = await waitForServerReady(TEST_BASE_URL, 15000);
     assert(isReady, `Isolated test server failed to start on ${TEST_BASE_URL} within 15s`);
     console.log(`  ✅ PASS: Isolated test server running on ${TEST_BASE_URL}`);
+
+    // TEST 3c: Produkční sandbox simulace je striktně odmítnuta (HTTP 404)
+    console.log('\n[TEST 3c: Produkční sandbox simulace (simulate-payment) je striktně odmítnuta s HTTP 404]');
+    const prodDraft = await createTestDraftOrder(TEST_BASE_URL, 'Produkční Pokus o Simulaci');
+    const prodSimRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/sandbox/simulate-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: prodDraft.orderId, orderToken: prodDraft.orderToken, simulateOutcome: 'SUCCESS' })
+    });
+    assert.strictEqual(prodSimRes.status, 404, 'V produkci musí simulate-payment vrátit HTTP 404');
+    const prodSimData = await prodSimRes.json();
+    assert(prodSimData.error, 'Odpověď obsahuje chybové hlášení');
+
+    // Ověř, že objednávka nebyla v produkci označena jako PAID
+    const prodOrderCheckRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${prodDraft.orderId}`, {
+      headers: { 'x-order-token': prodDraft.orderToken }
+    });
+    const prodOrderCheckData = await prodOrderCheckRes.json();
+    assert.strictEqual(prodOrderCheckData.order.paymentStatus, 'UNPAID', 'Objednávka v produkci NESMÍ být označena jako PAID přes simulate-payment');
+    assert.strictEqual(prodOrderCheckData.isPaid, false, 'isPaid zůstává false');
+    assert.strictEqual(prodOrderCheckData.analysis, null, 'Analýza nebyla vygenerována');
+    console.log('  ✅ PASS: V produkci je endpoint simulate-payment zcela zablokován (HTTP 404) a objednávku nezaplatí');
+
+    // TEST 3d: Produkční Checkout bez STRIPE_SECRET_KEY selže bezpečně (HTTP 503) a nepřepne se do sandboxu
+    console.log('\n[TEST 3d: Produkční Checkout bez STRIPE_SECRET_KEY selže bezpečně s HTTP 503 a nepřepne se do sandboxu]');
+    const prodCheckoutRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${prodDraft.orderId}/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-order-token': prodDraft.orderToken },
+      body: JSON.stringify({ orderToken: prodDraft.orderToken })
+    });
+    assert.strictEqual(prodCheckoutRes.status, 503, 'V produkci bez STRIPE_SECRET_KEY musí checkout vrátit HTTP 503');
+    const prodCheckoutData = await prodCheckoutRes.json();
+    assert.strictEqual(prodCheckoutData.code, 'STRIPE_NOT_CONFIGURED', 'Chybový kód je STRIPE_NOT_CONFIGURED');
+    assert.notStrictEqual(prodCheckoutData.mode, 'sandbox', 'V produkci NESMÍ být vrácen mode: "sandbox"');
+    console.log('  ✅ PASS: V produkci bez STRIPE_SECRET_KEY checkout bezpečně vrátil HTTP 503 a nespadl do sandboxu');
 
     // TEST 4: Invalid Stripe cryptographic signature (tampered payload / invalid signature)
     console.log('\n[TEST 4: Neplatný / podvržený Stripe podpis odmítnut s HTTP 400]');
@@ -148,7 +241,7 @@ async function runStripeWebhookTests() {
       type: 'checkout.session.completed',
       data: { object: { id: 'cs_tampered', payment_status: 'paid' } }
     });
-    const badSigRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const badSigRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -176,7 +269,7 @@ async function runStripeWebhookTests() {
       }
     });
     const noOrderIdSig = signStripeEvent(noOrderIdPayload);
-    const noOrderIdRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const noOrderIdRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -203,7 +296,7 @@ async function runStripeWebhookTests() {
       }
     });
     const nonExistentSig = signStripeEvent(nonExistentPayload);
-    const nonExistentRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const nonExistentRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -231,7 +324,7 @@ async function runStripeWebhookTests() {
       }
     });
     const unpaidSig = signStripeEvent(unpaidPayload);
-    const unpaidRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const unpaidRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -243,7 +336,7 @@ async function runStripeWebhookTests() {
     const unpaidData = await unpaidRes.json();
     assert.strictEqual(unpaidData.status, 'PAYMENT_PENDING', 'Stav zůstává PAYMENT_PENDING');
 
-    const unpaidCheckRes = await fetch(`${TEST_BASE_URL}/api/business-start/order/${draftUnpaid.orderId}`, {
+    const unpaidCheckRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${draftUnpaid.orderId}`, {
       headers: { 'x-order-token': draftUnpaid.orderToken }
     });
     const unpaidCheckData = await unpaidCheckRes.json();
@@ -269,7 +362,7 @@ async function runStripeWebhookTests() {
       }
     });
     const wrongAmountSig = signStripeEvent(wrongAmountPayload);
-    const wrongAmountRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const wrongAmountRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -281,7 +374,7 @@ async function runStripeWebhookTests() {
     const wrongAmountData = await wrongAmountRes.json();
     assert(wrongAmountData.error.includes('690'), 'Chybová zpráva uvádí očekávanou částku 690 Kč');
 
-    const wrongAmountCheckRes = await fetch(`${TEST_BASE_URL}/api/business-start/order/${draftWrongAmount.orderId}`, {
+    const wrongAmountCheckRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${draftWrongAmount.orderId}`, {
       headers: { 'x-order-token': draftWrongAmount.orderToken }
     });
     const wrongAmountCheckData = await wrongAmountCheckRes.json();
@@ -305,7 +398,7 @@ async function runStripeWebhookTests() {
       }
     });
     const wrongCurrencySig = signStripeEvent(wrongCurrencyPayload);
-    const wrongCurrencyRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const wrongCurrencyRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -317,7 +410,7 @@ async function runStripeWebhookTests() {
     const wrongCurrencyData = await wrongCurrencyRes.json();
     assert(wrongCurrencyData.error.includes('CZK'), 'Chybová zpráva uvádí očekávanou měnu CZK');
 
-    const wrongCurrencyCheckRes = await fetch(`${TEST_BASE_URL}/api/business-start/order/${draftWrongCurrency.orderId}`, {
+    const wrongCurrencyCheckRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${draftWrongCurrency.orderId}`, {
       headers: { 'x-order-token': draftWrongCurrency.orderToken }
     });
     const wrongCurrencyCheckData = await wrongCurrencyCheckRes.json();
@@ -342,7 +435,7 @@ async function runStripeWebhookTests() {
       }
     });
     const paidSig = signStripeEvent(paidPayload);
-    const paidRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const paidRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -356,7 +449,7 @@ async function runStripeWebhookTests() {
     assert.strictEqual(paidData.status, 'REPORT_READY', 'Stav objednávky pokročil na REPORT_READY');
 
     // Ověření stavu objednávky přes API
-    const orderCheckRes = await fetch(`${TEST_BASE_URL}/api/business-start/order/${draftPaid.orderId}`, {
+    const orderCheckRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${draftPaid.orderId}`, {
       headers: { 'x-order-token': draftPaid.orderToken }
     });
     const orderCheckData = await orderCheckRes.json();
@@ -368,7 +461,7 @@ async function runStripeWebhookTests() {
 
     // TEST 11: Idempotency check: duplicate delivery of the exact same event
     console.log('\n[TEST 11: Idempotentní zpracování při opakovaném doručení stejné Stripe události]');
-    const duplicateRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const duplicateRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -381,6 +474,69 @@ async function runStripeWebhookTests() {
     assert.strictEqual(duplicateData.alreadyProcessed, true, 'Opakovaný požadavek detekován jako alreadyProcessed');
     assert.strictEqual(duplicateData.status, 'REPORT_READY', 'Stav zůstává REPORT_READY beze změny');
     console.log('  ✅ PASS: Opakované doručení je 100% idempotentní (nevytváří duplicity ani nespouští znovu analýzu)');
+
+    // TEST 11b: Souběžné doručení dvou platných Stripe webhooků pro stejnou objednávku (Race Condition / Concurrency Mutex)
+    console.log('\n[TEST 11b: Souběžné doručení dvou platných Stripe webhooků pro stejnou objednávku]');
+    const draftConcurrent = await createTestDraftOrder(TEST_BASE_URL, 'Souběžná Platba');
+    const concurrentPayload = JSON.stringify({
+      id: 'evt_concurrent_11b',
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_concurrent_11b',
+          client_reference_id: draftConcurrent.orderId,
+          payment_status: 'paid',
+          amount_total: 69000,
+          currency: 'czk',
+          payment_intent: 'pi_test_concurrent_11b'
+        }
+      }
+    });
+    const concurrentSig = signStripeEvent(concurrentPayload);
+
+    // Odeslání dvou přesně souběžných HTTP webhook požadavků na stejnou objednávku
+    const [resA, resB] = await Promise.all([
+      safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'stripe-signature': concurrentSig
+        },
+        body: concurrentPayload
+      }),
+      safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'stripe-signature': concurrentSig
+        },
+        body: concurrentPayload
+      })
+    ]);
+
+    assert.strictEqual(resA.status, 200, 'První souběžný webhook vrátil HTTP 200');
+    assert.strictEqual(resB.status, 200, 'Druhý souběžný webhook vrátil HTTP 200');
+    const dataA = await resA.json();
+    const dataB = await resB.json();
+
+    // Přesně jeden z požadavků musí provést primární zpracování a druhý musí být detekován jako duplicate/alreadyProcessed
+    const isPrimaryA = !dataA.alreadyProcessed;
+    const isPrimaryB = !dataB.alreadyProcessed;
+    assert(
+      (isPrimaryA && dataB.alreadyProcessed) || (isPrimaryB && dataA.alreadyProcessed),
+      'Přesně jeden požadavek zpracoval objednávku a druhý byl detekován jako alreadyProcessed díky per-order mutexu'
+    );
+
+    // Ověření, že v persistovaném stavu je analýza uložena a stav je REPORT_READY
+    const concurrentCheckRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${draftConcurrent.orderId}`, {
+      headers: { 'x-order-token': draftConcurrent.orderToken }
+    });
+    const concurrentCheckData = await concurrentCheckRes.json();
+    assert.strictEqual(concurrentCheckData.order.paymentStatus, 'PAID', 'Objednávka je ve stavu PAID');
+    assert.strictEqual(concurrentCheckData.order.status, 'REPORT_READY', 'Objednávka má status REPORT_READY');
+    assert.strictEqual(concurrentCheckData.isPaid, true, 'isPaid je true');
+    assert(concurrentCheckData.analysis, 'Business Report byl vygenerován právě jednou');
+    console.log('  ✅ PASS: Dva souběžné webhooky byly serializovány – analýza proběhla právě jednou a druhý požadavek byl odbaven jako alreadyProcessed');
 
     // TEST 12: Failed PaymentIntent (payment_intent.payment_failed)
     console.log('\n[TEST 12: Neúspěšný PaymentIntent (payment_intent.payment_failed)]');
@@ -399,7 +555,7 @@ async function runStripeWebhookTests() {
       }
     });
     const failSig = signStripeEvent(failPayload);
-    const failRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const failRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -411,7 +567,7 @@ async function runStripeWebhookTests() {
     const failData = await failRes.json();
     assert.strictEqual(failData.status, 'PAYMENT_FAILED', 'Stav objednávky je PAYMENT_FAILED');
 
-    const failOrderRes = await fetch(`${TEST_BASE_URL}/api/business-start/order/${draftFailed.orderId}`, {
+    const failOrderRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${draftFailed.orderId}`, {
       headers: { 'x-order-token': draftFailed.orderToken }
     });
     const failOrderData = await failOrderRes.json();
@@ -435,7 +591,7 @@ async function runStripeWebhookTests() {
       }
     });
     const lateFailSig = signStripeEvent(lateFailPayload);
-    const lateFailRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const lateFailRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -448,7 +604,7 @@ async function runStripeWebhookTests() {
     assert.strictEqual(lateFailData.ignored, true, 'Událost selhání byla ignorována');
     assert.strictEqual(lateFailData.reason, 'order_already_paid', 'Důvod ignorování je order_already_paid');
 
-    const reCheckRes = await fetch(`${TEST_BASE_URL}/api/business-start/order/${draftPaid.orderId}`, {
+    const reCheckRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${draftPaid.orderId}`, {
       headers: { 'x-order-token': draftPaid.orderToken }
     });
     const reCheckData = await reCheckRes.json();
@@ -469,7 +625,7 @@ async function runStripeWebhookTests() {
       }
     });
     const lateExpiredSig = signStripeEvent(lateExpiredPayload);
-    const lateExpiredRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const lateExpiredRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -499,7 +655,7 @@ async function runStripeWebhookTests() {
       }
     });
     const lateUnpaidSig = signStripeEvent(lateUnpaidPayload);
-    const lateUnpaidRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const lateUnpaidRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -530,7 +686,7 @@ async function runStripeWebhookTests() {
       }
     });
     const asyncSuccessSig = signStripeEvent(asyncSuccessPayload);
-    const asyncSuccessRes = await fetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
+    const asyncSuccessRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -542,7 +698,7 @@ async function runStripeWebhookTests() {
     const asyncSuccessData = await asyncSuccessRes.json();
     assert.strictEqual(asyncSuccessData.status, 'REPORT_READY', 'Stav objednávky pokročil na REPORT_READY');
 
-    const asyncCheckRes = await fetch(`${TEST_BASE_URL}/api/business-start/order/${draftAsync.orderId}`, {
+    const asyncCheckRes = await safeFetch(`${TEST_BASE_URL}/api/business-start/order/${draftAsync.orderId}`, {
       headers: { 'x-order-token': draftAsync.orderToken }
     });
     const asyncCheckData = await asyncCheckRes.json();
@@ -552,7 +708,7 @@ async function runStripeWebhookTests() {
     console.log('  ✅ PASS: checkout.session.async_payment_succeeded správně označila objednávku jako PAID a REPORT_READY');
 
     console.log('\n================================================================');
-    console.log('🎉 VŠECH 16 TESTŮ STRIPE WEBHOOKU A BEZPEČNOSTI 100% PROŠLO!');
+    console.log('🎉 VŠECH 20 TESTŮ STRIPE WEBHOOKU, SANDBOXU, SOUBĚHU A BEZPEČNOSTI 100% PROŠLO!');
     console.log('================================================================\n');
   } finally {
     if (testServerChild) {
